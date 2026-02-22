@@ -23,6 +23,19 @@ services:
       - GOCLAW_CONFIG=/app/data/config.json
     volumes:
       - goclaw-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    pids_limit: 200
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
     restart: unless-stopped
 
 volumes:
