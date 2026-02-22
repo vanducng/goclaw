@@ -14,6 +14,27 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 )
 
+// resolveAgentUUID looks up the agent UUID from the channel's agent key.
+// Returns uuid.Nil if the agent key is empty or not found.
+func (c *Channel) resolveAgentUUID(ctx context.Context) (uuid.UUID, error) {
+	key := c.AgentID()
+	if key == "" {
+		return uuid.Nil, fmt.Errorf("no agent key configured")
+	}
+
+	// Try direct UUID parse first (future-proofing).
+	if id, err := uuid.Parse(key); err == nil {
+		return id, nil
+	}
+
+	// Look up by agent key.
+	agent, err := c.agentStore.GetByKey(ctx, key)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("agent %q not found: %w", key, err)
+	}
+	return agent.ID, nil
+}
+
 // handleBotCommand checks if the message is a known bot command and handles it.
 // Returns true if the message was handled as a command.
 func (c *Channel) handleBotCommand(ctx context.Context, message *telego.Message, chatID int64, chatIDStr, localKey, text, senderID string, isGroup, isForum bool, messageThreadID int) bool {
@@ -127,8 +148,9 @@ func (c *Channel) handleWriterCommand(ctx context.Context, message *telego.Messa
 		return
 	}
 
-	agentID, err := uuid.Parse(c.AgentID())
+	agentID, err := c.resolveAgentUUID(ctx)
 	if err != nil {
+		slog.Debug("writer command: agent resolve failed", "error", err)
 		send("File writer management is not available (no agent).")
 		return
 	}
@@ -150,7 +172,11 @@ func (c *Channel) handleWriterCommand(ctx context.Context, message *telego.Messa
 
 	// Extract target user from reply-to message
 	if message.ReplyToMessage == nil || message.ReplyToMessage.From == nil {
-		send(fmt.Sprintf("Reply to a message from the user you want to %s as a writer.", action))
+		verb := "add"
+		if action == "remove" {
+			verb = "remove"
+		}
+		send(fmt.Sprintf("To %s a writer: find a message from that person, swipe to reply it, then type /%swriter.", verb, verb))
 		return
 	}
 
@@ -206,8 +232,9 @@ func (c *Channel) handleListWriters(ctx context.Context, chatID int64, chatIDStr
 		return
 	}
 
-	agentID, err := uuid.Parse(c.AgentID())
+	agentID, err := c.resolveAgentUUID(ctx)
 	if err != nil {
+		slog.Debug("list writers: agent resolve failed", "error", err)
 		send("File writer management is not available (no agent).")
 		return
 	}

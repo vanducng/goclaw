@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
-import { Settings, Save, RefreshCw, AlertCircle, ShieldAlert } from "lucide-react";
+import { Settings, Save, RefreshCw, AlertCircle, ShieldAlert, ArrowRight } from "lucide-react";
+import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DetailSkeleton } from "@/components/shared/loading-skeleton";
 import { useConfig } from "./hooks/use-config";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { ROUTES } from "@/lib/constants";
 import { GatewaySection } from "./sections/gateway-section";
 import { ProvidersSection } from "./sections/providers-section";
 import { AgentsDefaultsSection } from "./sections/agents-defaults-section";
@@ -158,6 +161,27 @@ export function ConfigPage() {
   );
 }
 
+/** Compact redirect card shown in managed mode for sections that have dedicated pages. */
+function ManagedRedirect({ title, description, to }: { title: string; description: string; to: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base">{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" className="gap-1.5 shrink-0" asChild>
+            <Link to={to}>
+              Manage <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function ConfigUI({
   config,
@@ -168,6 +192,8 @@ function ConfigUI({
   onPatch: (updates: Record<string, unknown>) => Promise<void>;
   saving: boolean;
 }) {
+  const isManaged = (config.database as any)?.mode === "managed";
+
   return (
     <div className="space-y-4">
       <GatewaySection
@@ -175,11 +201,19 @@ function ConfigUI({
         onSave={(v) => onPatch({ gateway: v })}
         saving={saving}
       />
-      <ProvidersSection
-        data={config.providers as any}
-        onSave={(v) => onPatch({ providers: v })}
-        saving={saving}
-      />
+      {isManaged ? (
+        <ManagedRedirect
+          title="LLM Providers"
+          description="Managed via the Providers page in managed mode."
+          to={ROUTES.PROVIDERS}
+        />
+      ) : (
+        <ProvidersSection
+          data={config.providers as any}
+          onSave={(v) => onPatch({ providers: v })}
+          saving={saving}
+        />
+      )}
       <AgentsDefaultsSection
         data={config.agents as any}
         onSave={(v) => onPatch({ agents: v })}
@@ -190,11 +224,19 @@ function ConfigUI({
         onSave={(v) => onPatch({ tools: v })}
         saving={saving}
       />
-      <ChannelsSection
-        data={config.channels as any}
-        onSave={(v) => onPatch({ channels: v })}
-        saving={saving}
-      />
+      {isManaged ? (
+        <ManagedRedirect
+          title="Channels"
+          description="Managed via the Channels page in managed mode."
+          to={ROUTES.CHANNELS}
+        />
+      ) : (
+        <ChannelsSection
+          data={config.channels as any}
+          onSave={(v) => onPatch({ channels: v })}
+          saving={saving}
+        />
+      )}
       <SessionsSection
         data={config.sessions as any}
         onSave={(v) => onPatch({ sessions: v })}

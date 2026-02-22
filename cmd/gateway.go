@@ -117,9 +117,16 @@ func runGateway() {
 	// Sandbox manager (optional — routes tools through Docker containers)
 	var sandboxMgr sandbox.Manager
 	if sbCfg := cfg.Agents.Defaults.Sandbox; sbCfg != nil && sbCfg.Mode != "" && sbCfg.Mode != "off" {
-		resolved := sbCfg.ToSandboxConfig()
-		sandboxMgr = sandbox.NewDockerManager(resolved)
-		slog.Info("sandbox enabled", "mode", string(resolved.Mode), "image", resolved.Image, "scope", string(resolved.Scope))
+		if err := sandbox.CheckDockerAvailable(context.Background()); err != nil {
+			slog.Warn("sandbox disabled: Docker not available",
+				"configured_mode", sbCfg.Mode,
+				"error", err,
+			)
+		} else {
+			resolved := sbCfg.ToSandboxConfig()
+			sandboxMgr = sandbox.NewDockerManager(resolved)
+			slog.Info("sandbox enabled", "mode", string(resolved.Mode), "image", resolved.Image, "scope", string(resolved.Scope))
+		}
 	}
 
 	// Register file tools + exec tool (with sandbox routing via FsBridge if enabled)

@@ -167,6 +167,51 @@ func (c *Config) applyEnvOverrides() {
 	envStr("GOCLAW_TSNET_HOSTNAME", &c.Tailscale.Hostname)
 	envStr("GOCLAW_TSNET_AUTH_KEY", &c.Tailscale.AuthKey)
 	envStr("GOCLAW_TSNET_DIR", &c.Tailscale.StateDir)
+
+	// Sandbox (for Docker-compose sandbox overlay)
+	ensureSandbox := func() {
+		if c.Agents.Defaults.Sandbox == nil {
+			c.Agents.Defaults.Sandbox = &SandboxConfig{}
+		}
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_MODE"); v != "" {
+		ensureSandbox()
+		c.Agents.Defaults.Sandbox.Mode = v
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_IMAGE"); v != "" {
+		ensureSandbox()
+		c.Agents.Defaults.Sandbox.Image = v
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_WORKSPACE_ACCESS"); v != "" {
+		ensureSandbox()
+		c.Agents.Defaults.Sandbox.WorkspaceAccess = v
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_SCOPE"); v != "" {
+		ensureSandbox()
+		c.Agents.Defaults.Sandbox.Scope = v
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_MEMORY_MB"); v != "" {
+		ensureSandbox()
+		if mb, err := strconv.Atoi(v); err == nil && mb > 0 {
+			c.Agents.Defaults.Sandbox.MemoryMB = mb
+		}
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_CPUS"); v != "" {
+		ensureSandbox()
+		if cpus, err := strconv.ParseFloat(v, 64); err == nil && cpus > 0 {
+			c.Agents.Defaults.Sandbox.CPUs = cpus
+		}
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_TIMEOUT_SEC"); v != "" {
+		ensureSandbox()
+		if sec, err := strconv.Atoi(v); err == nil && sec > 0 {
+			c.Agents.Defaults.Sandbox.TimeoutSec = sec
+		}
+	}
+	if v := os.Getenv("GOCLAW_SANDBOX_NETWORK"); v != "" {
+		ensureSandbox()
+		c.Agents.Defaults.Sandbox.NetworkEnabled = v == "true" || v == "1"
+	}
 }
 
 // applyContextPruningDefaults auto-enables context pruning when the Anthropic
