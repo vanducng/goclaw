@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -13,45 +14,99 @@ import (
 )
 
 // Dangerous command patterns to deny by default.
+// Defense-in-depth: these patterns complement Docker hardening (cap-drop ALL,
+// read-only rootfs, no-new-privileges, pids-limit, memory limit).
+// Sources: OWASP Agentic AI Top 10, Claude Code CVE-2025-66032, MITRE ATT&CK,
+// PayloadsAllTheThings, Trail of Bits prompt-injection-to-RCE research.
 var defaultDenyPatterns = []*regexp.Regexp{
-	// Destructive file operations
+	// ── Destructive file operations ──
 	regexp.MustCompile(`\brm\s+-[rf]{1,2}\b`),
+	regexp.MustCompile(`\brm\s+.*--recursive`),
+	regexp.MustCompile(`\brm\s+.*--force`),
 	regexp.MustCompile(`\bdel\s+/[fq]\b`),
 	regexp.MustCompile(`\brmdir\s+/s\b`),
-	regexp.MustCompile(`\b(mkfs|diskpart)\b|\bformat\s`), // "format C:" but not "?format=3"
+	regexp.MustCompile(`\b(mkfs|diskpart)\b|\bformat\s`),
 	regexp.MustCompile(`\bdd\s+if=`),
 	regexp.MustCompile(`>\s*/dev/sd[a-z]\b`),
 	regexp.MustCompile(`\b(shutdown|reboot|poweroff)\b`),
 	regexp.MustCompile(`:\(\)\s*\{.*\};\s*:`), // fork bomb
 
-	// Network exfiltration / remote code execution
-	regexp.MustCompile(`\bcurl\b.*\|\s*(ba)?sh\b`),          // curl | sh
-	regexp.MustCompile(`\bwget\b.*-O\s*-\s*\|\s*(ba)?sh\b`), // wget -O - | sh
-	regexp.MustCompile(`/dev/tcp/`),                           // bash tcp redirect
-	regexp.MustCompile(`\b(nc|ncat|netcat)\b.*-[el]\b`),      // reverse shell listeners
+	// ── Data exfiltration ──
+	regexp.MustCompile(`\bcurl\b.*\|\s*(ba)?sh\b`),                                            // curl | sh
+	regexp.MustCompile(`\bcurl\b.*(-d\b|-F\b|--data|--upload|--form|-T\b|-X\s*P(UT|OST|ATCH))`), // curl POST/PUT
+	regexp.MustCompile(`\bwget\b.*-O\s*-\s*\|\s*(ba)?sh\b`),                                   // wget | sh
+	regexp.MustCompile(`\bwget\b.*--post-(data|file)`),                                         // wget POST
+	regexp.MustCompile(`\b(nslookup|dig|host)\b`),                                              // DNS exfiltration
+	regexp.MustCompile(`/dev/tcp/`),                                                             // bash tcp redirect
 
-	// Dangerous eval from untrusted sources
-	regexp.MustCompile(`\beval\s*\$`),                      // eval $(...)
-	regexp.MustCompile(`\bbase64\s+-d\b.*\|\s*(ba)?sh\b`),  // base64 -d | sh
+	// ── Reverse shells ──
+	regexp.MustCompile(`\b(nc|ncat|netcat)\b.*-[el]\b`),
+	regexp.MustCompile(`\bsocat\b`),
+	regexp.MustCompile(`\bopenssl\b.*s_client`),
+	regexp.MustCompile(`\btelnet\b.*\d+`),
+	regexp.MustCompile(`\bpython[23]?\b.*\bimport\s+(socket|http\.client|urllib|requests)\b`),
+	regexp.MustCompile(`\bperl\b.*-e\s*.*\b[Ss]ocket\b`),
+	regexp.MustCompile(`\bruby\b.*-e\s*.*\b(TCPSocket|Socket)\b`),
+	regexp.MustCompile(`\bnode\b.*-e\s*.*\b(net\.connect|child_process)\b`),
+	regexp.MustCompile(`\bawk\b.*/inet/`),  // awk built-in networking
+	regexp.MustCompile(`\bmkfifo\b`),        // named pipes for shell redirection
 
-	// Bypass-resistant patterns (long flags)
-	regexp.MustCompile(`\brm\s+.*--recursive`), // rm --recursive (bypasses rm -rf check)
-	regexp.MustCompile(`\brm\s+.*--force`),     // rm --force
+	// ── Dangerous eval / code injection ──
+	regexp.MustCompile(`\beval\s*\$`),
+	regexp.MustCompile(`\bbase64\s+-d\b.*\|\s*(ba)?sh\b`),
 
-	// Privilege escalation
-	regexp.MustCompile(`\bsudo\b`),    // sudo
-	regexp.MustCompile(`\bsu\s+-`),    // su - (switch user)
-	regexp.MustCompile(`\bnsenter\b`), // namespace escape
-	regexp.MustCompile(`\bunshare\b`), // namespace manipulation
+	// ── Privilege escalation ──
+	regexp.MustCompile(`\bsudo\b`),
+	regexp.MustCompile(`\bsu\s+-`),
+	regexp.MustCompile(`\bnsenter\b`),
+	regexp.MustCompile(`\bunshare\b`),
+	regexp.MustCompile(`\b(mount|umount)\b`),
+	regexp.MustCompile(`\b(capsh|setcap|getcap)\b`),
 
-	// Dangerous path operations on root filesystem
-	regexp.MustCompile(`\bchmod\s+[0-7]{3,4}\s+/`), // chmod 777 /...
-	regexp.MustCompile(`\bchown\b.*\s+/`),           // chown ... /...
+	// ── Dangerous path operations ──
+	regexp.MustCompile(`\bchmod\s+[0-7]{3,4}\s+/`),
+	regexp.MustCompile(`\bchown\b.*\s+/`),
+	regexp.MustCompile(`\bchmod\b.*\+x.*/tmp/`),       // make tmpfs executable
+	regexp.MustCompile(`\bchmod\b.*\+x.*/var/tmp/`),
+	regexp.MustCompile(`\bchmod\b.*\+x.*/dev/shm/`),
 
-	// Environment variable injection
-	regexp.MustCompile(`\bLD_PRELOAD\s*=`),               // Linux library injection
-	regexp.MustCompile(`\bDYLD_INSERT_LIBRARIES\s*=`),     // macOS library injection
-	regexp.MustCompile(`\bLD_LIBRARY_PATH\s*=`),           // library path hijack
+	// ── Environment variable injection ──
+	regexp.MustCompile(`\bLD_PRELOAD\s*=`),
+	regexp.MustCompile(`\bDYLD_INSERT_LIBRARIES\s*=`),
+	regexp.MustCompile(`\bLD_LIBRARY_PATH\s*=`),
+	regexp.MustCompile(`/etc/ld\.so\.preload`),
+
+	// ── Container escape ──
+	regexp.MustCompile(`/var/run/docker\.sock|docker\.(sock|socket)`),
+	regexp.MustCompile(`/proc/sys/(kernel|fs|net)/`),    // proc writes
+	regexp.MustCompile(`/sys/(kernel|fs|class|devices)/`), // sysfs manipulation
+
+	// ── Crypto mining ──
+	regexp.MustCompile(`\b(xmrig|cpuminer|minerd|cgminer|bfgminer|ethminer|nbminer|t-rex|phoenixminer|lolminer|gminer|claymore)\b`),
+	regexp.MustCompile(`stratum\+tcp://|stratum\+ssl://`),
+
+	// ── Filter bypass (Claude Code CVE-2025-66032) ──
+	regexp.MustCompile(`\bsed\b.*['"]/e\b`),             // sed /e command execution
+	regexp.MustCompile(`\bsort\b.*--compress-program`),   // sort arbitrary exec
+	regexp.MustCompile(`\bgit\b.*(--upload-pack|--receive-pack|--exec)=`), // git exec flags
+	regexp.MustCompile(`\b(rg|grep)\b.*--pre=`),          // preprocessor execution
+	regexp.MustCompile(`\bman\b.*--html=`),                // man command injection
+	regexp.MustCompile(`\bhistory\b.*-[saw]\b`),           // history file injection
+	regexp.MustCompile(`\$\{[^}]*@[PpEeAaKk]\}`),         // ${var@P} parameter expansion
+
+	// ── Network abuse / reconnaissance ──
+	regexp.MustCompile(`\b(nmap|masscan|zmap|rustscan)\b`),
+	regexp.MustCompile(`\b(ssh|scp|sftp)\b.*@`),           // outbound SSH
+	regexp.MustCompile(`\b(chisel|frp|ngrok|cloudflared|bore|localtunnel)\b`), // tunneling tools
+
+	// ── Persistence ──
+	regexp.MustCompile(`\bcrontab\b`),
+	regexp.MustCompile(`>\s*~/?\.(bashrc|bash_profile|profile|zshrc)`), // shell RC injection
+	regexp.MustCompile(`\btee\b.*\.(bashrc|bash_profile|profile|zshrc)`),
+
+	// ── Process manipulation ──
+	regexp.MustCompile(`\bkill\s+-9\s`),
+	regexp.MustCompile(`\b(killall|pkill)\b`),
 }
 
 // ExecTool executes shell commands, optionally inside a sandbox container.
@@ -213,9 +268,14 @@ func (t *ExecTool) executeInSandbox(ctx context.Context, command, cwd, sandboxKe
 	sb, err := t.sandboxMgr.Get(ctx, sandboxKey, t.workingDir)
 	if err != nil {
 		if err == sandbox.ErrSandboxDisabled {
-			return t.executeOnHost(ctx, command, cwd) // fallback to host
+			return t.executeOnHost(ctx, command, cwd)
 		}
-		return ErrorResult(fmt.Sprintf("sandbox error: %v", err))
+		// Docker unavailable (binary missing, daemon down) → fallback to host
+		slog.Warn("sandbox unavailable, falling back to host exec",
+			"error", err,
+			"command", truncateCmd(command, 80),
+		)
+		return t.executeOnHost(ctx, command, cwd)
 	}
 
 	// Map host workdir to container workdir

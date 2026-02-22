@@ -32,8 +32,14 @@ RUN set -eux; \
 # ── Stage 2: Runtime ──
 FROM alpine:3.22
 
-# Install ca-certificates (for HTTPS to LLM APIs) + wget (for healthcheck)
-RUN apk add --no-cache ca-certificates wget
+ARG ENABLE_SANDBOX=false
+
+# Install ca-certificates + wget (healthcheck) + optionally docker-cli (sandbox)
+RUN set -eux; \
+    apk add --no-cache ca-certificates wget; \
+    if [ "$ENABLE_SANDBOX" = "true" ]; then \
+        apk add --no-cache docker-cli; \
+    fi
 
 # Non-root user
 RUN adduser -D -u 1000 -h /app goclaw
