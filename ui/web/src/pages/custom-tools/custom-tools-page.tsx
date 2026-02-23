@@ -11,11 +11,13 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useCustomTools, type CustomToolData, type CustomToolInput } from "./hooks/use-custom-tools";
 import { CustomToolFormDialog } from "./custom-tool-form-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { usePagination } from "@/hooks/use-pagination";
 
 export function CustomToolsPage() {
   const { tools, loading, refresh, createTool, updateTool, deleteTool } = useCustomTools();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && tools.length === 0);
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editTool, setEditTool] = useState<CustomToolData | null>(null);
@@ -79,7 +81,7 @@ export function CustomToolsPage() {
       </div>
 
       <div className="mt-4">
-        {loading && tools.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={5} />
         ) : filtered.length === 0 ? (
           <EmptyState

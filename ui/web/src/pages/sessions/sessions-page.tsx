@@ -7,6 +7,7 @@ import { SearchInput } from "@/components/shared/search-input";
 import { Pagination } from "@/components/shared/pagination";
 import { Badge } from "@/components/ui/badge";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useSessions } from "./hooks/use-sessions";
 import { SessionDetailPage } from "./session-detail-page";
 import { parseSessionKey } from "@/lib/session-key";
@@ -17,6 +18,7 @@ export function SessionsPage() {
   const { key: detailKey } = useParams<{ key: string }>();
   const navigate = useNavigate();
   const { sessions, total, loading, refresh, preview, deleteSession, resetSession } = useSessions();
+  const showSkeleton = useDeferredLoading(loading && sessions.length === 0);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -65,7 +67,7 @@ export function SessionsPage() {
       </div>
 
       <div className="mt-6">
-        {loading && sessions.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={8} />
         ) : filtered.length === 0 ? (
           <EmptyState

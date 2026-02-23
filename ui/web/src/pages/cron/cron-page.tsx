@@ -12,6 +12,7 @@ import { useCron, type CronJob, type CronRunLogEntry } from "./hooks/use-cron";
 import { CronFormDialog } from "./cron-form-dialog";
 import { CronRunLogDialog } from "./cron-run-log-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { usePagination } from "@/hooks/use-pagination";
 
 function formatSchedule(job: CronJob): string {
@@ -30,6 +31,7 @@ function formatSchedule(job: CronJob): string {
 export function CronPage() {
   const { jobs, loading, refresh, createJob, toggleJob, deleteJob, runJob, getRunLog } = useCron();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && jobs.length === 0);
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CronJob | null>(null);
   const [runLogTarget, setRunLogTarget] = useState<CronJob | null>(null);
@@ -68,7 +70,7 @@ export function CronPage() {
       />
 
       <div className="mt-4">
-        {loading && jobs.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={5} />
         ) : jobs.length === 0 ? (
           <EmptyState

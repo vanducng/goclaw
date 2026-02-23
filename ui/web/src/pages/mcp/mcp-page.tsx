@@ -12,6 +12,7 @@ import { useMCP, type MCPServerData, type MCPServerInput } from "./hooks/use-mcp
 import { MCPFormDialog } from "./mcp-form-dialog";
 import { MCPGrantsDialog } from "./mcp-grants-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { usePagination } from "@/hooks/use-pagination";
 
 const transportBadge: Record<string, string> = {
@@ -23,6 +24,7 @@ const transportBadge: Record<string, string> = {
 export function MCPPage() {
   const { servers, loading, refresh, createServer, updateServer, deleteServer, grantAgent, revokeAgent, listGrantsByAgent } = useMCP();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && servers.length === 0);
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editServer, setEditServer] = useState<MCPServerData | null>(null);
@@ -87,7 +89,7 @@ export function MCPPage() {
       </div>
 
       <div className="mt-4">
-        {loading && servers.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={5} />
         ) : filtered.length === 0 ? (
           <EmptyState

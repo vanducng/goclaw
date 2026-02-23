@@ -85,16 +85,16 @@ export function AppRoutes() {
           <Route path={ROUTES.OVERVIEW} element={<OverviewPage />} />
           <Route path={ROUTES.CHAT} element={<ChatPage />} />
           <Route path={ROUTES.CHAT_SESSION} element={<ChatPage />} />
-          <Route path={ROUTES.AGENTS} element={<AgentsPage />} />
-          <Route path={ROUTES.AGENT_DETAIL} element={<AgentsPage />} />
-          <Route path={ROUTES.SESSIONS} element={<SessionsPage />} />
-          <Route path={ROUTES.SESSION_DETAIL} element={<SessionsPage />} />
-          <Route path={ROUTES.SKILLS} element={<SkillsPage />} />
-          <Route path={ROUTES.SKILL_DETAIL} element={<SkillsPage />} />
+          <Route path={ROUTES.AGENTS} element={<AgentsPage key="list" />} />
+          <Route path={ROUTES.AGENT_DETAIL} element={<AgentsPage key="detail" />} />
+          <Route path={ROUTES.SESSIONS} element={<SessionsPage key="list" />} />
+          <Route path={ROUTES.SESSION_DETAIL} element={<SessionsPage key="detail" />} />
+          <Route path={ROUTES.SKILLS} element={<SkillsPage key="list" />} />
+          <Route path={ROUTES.SKILL_DETAIL} element={<SkillsPage key="detail" />} />
           <Route path={ROUTES.CRON} element={<CronPage />} />
           <Route path={ROUTES.CONFIG} element={<ConfigPage />} />
-          <Route path={ROUTES.TRACES} element={<TracesPage />} />
-          <Route path={ROUTES.TRACE_DETAIL} element={<TracesPage />} />
+          <Route path={ROUTES.TRACES} element={<TracesPage key="list" />} />
+          <Route path={ROUTES.TRACE_DETAIL} element={<TracesPage key="detail" />} />
           <Route path={ROUTES.USAGE} element={<UsagePage />} />
           <Route path={ROUTES.CHANNELS} element={<ChannelsPage />} />
           <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />

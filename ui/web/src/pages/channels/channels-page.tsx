@@ -14,6 +14,7 @@ import { ChannelInstanceFormDialog } from "./channel-instance-form-dialog";
 import { ChannelsStatusView, channelTypeLabels } from "./channels-status-view";
 import { useAgents } from "@/pages/agents/hooks/use-agents";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { usePagination } from "@/hooks/use-pagination";
 
 export function ChannelsPage() {
@@ -26,6 +27,7 @@ export function ChannelsPage() {
 
   const loading = statusLoading || instancesLoading;
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && instances.length === 0);
 
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -110,7 +112,7 @@ export function ChannelsPage() {
       </div>
 
       <div className="mt-4">
-        {loading && instances.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={5} />
         ) : filtered.length === 0 ? (
           <EmptyState

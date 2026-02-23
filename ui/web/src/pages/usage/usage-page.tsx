@@ -9,10 +9,12 @@ import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { formatTokens } from "@/lib/format";
 import { useUsage } from "./hooks/use-usage";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 
 export function UsagePage() {
   const { records, total, summary, loading, loadRecords, loadSummary } = useUsage();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && records.length === 0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -45,7 +47,7 @@ export function UsagePage() {
         }
       />
 
-      {loading && records.length === 0 ? (
+      {showSkeleton ? (
         <div className="mt-6">
           <TableSkeleton rows={4} />
         </div>

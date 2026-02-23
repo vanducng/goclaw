@@ -8,7 +8,7 @@ import { AgentGeneralTab } from "./agent-general-tab";
 import { AgentConfigTab } from "./agent-config-tab";
 import { AgentFilesTab } from "./agent-files-tab";
 import { AgentSharesTab } from "./agent-shares-tab";
-import { DetailSkeleton } from "@/components/shared/loading-skeleton";
+import { DeferredSpinner } from "@/components/shared/loading-skeleton";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -41,7 +41,7 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
         <Button variant="ghost" onClick={onBack} className="mb-4 gap-1">
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
-        <DetailSkeleton />
+        <DeferredSpinner />
       </div>
     );
   }

@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { SearchInput } from "@/components/shared/search-input";
 import { Pagination } from "@/components/shared/pagination";
 import { CardSkeleton } from "@/components/shared/loading-skeleton";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAgents } from "./hooks/use-agents";
@@ -18,6 +19,7 @@ export function AgentsPage() {
   const { id: detailId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { agents, loading, createAgent, deleteAgent, refresh } = useAgents();
+  const showSkeleton = useDeferredLoading(loading && agents.length === 0);
 
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -67,7 +69,7 @@ export function AgentsPage() {
       </div>
 
       <div className="mt-6">
-        {loading && agents.length === 0 ? (
+        {showSkeleton ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <CardSkeleton key={i} />

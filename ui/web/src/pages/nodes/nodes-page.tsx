@@ -13,14 +13,15 @@ import {
   type PairedDevice,
 } from "./hooks/use-nodes";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 
 export function NodesPage() {
   const { pendingPairings, pairedDevices, loading, refresh, approvePairing, revokePairing } = useNodes();
   const spinning = useMinLoading(loading);
+  const isEmpty = pendingPairings.length === 0 && pairedDevices.length === 0;
+  const showSkeleton = useDeferredLoading(loading && isEmpty);
   const [revokeTarget, setRevokeTarget] = useState<PairedDevice | null>(null);
   const [approveTarget, setApproveTarget] = useState<PendingPairing | null>(null);
-
-  const isEmpty = pendingPairings.length === 0 && pairedDevices.length === 0;
 
   return (
     <div className="p-6">
@@ -35,7 +36,7 @@ export function NodesPage() {
       />
 
       <div className="mt-4">
-        {loading && isEmpty ? (
+        {showSkeleton ? (
           <TableSkeleton rows={4} />
         ) : isEmpty ? (
           <EmptyState

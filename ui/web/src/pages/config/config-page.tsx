@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { DetailSkeleton } from "@/components/shared/loading-skeleton";
 import { useConfig } from "./hooks/use-config";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { ROUTES } from "@/lib/constants";
 import { GatewaySection } from "./sections/gateway-section";
 import { ProvidersSection } from "./sections/providers-section";
@@ -26,6 +27,7 @@ import { BindingsSection } from "./sections/bindings-section";
 export function ConfigPage() {
   const { config, hash, configPath, loading, saving, error, refresh, applyRaw, patch } = useConfig();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && !config);
   const [rawText, setRawText] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function ConfigPage() {
     }
   };
 
-  if (loading && !config) {
+  if (showSkeleton) {
     return (
       <div className="p-6">
         <PageHeader title="Config" description="Gateway configuration" />

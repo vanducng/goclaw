@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CardSkeleton } from "@/components/shared/loading-skeleton";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import type { ChannelStatus } from "./hooks/use-channels";
 
 const channelTypeLabels: Record<string, string> = {
@@ -25,6 +26,7 @@ interface ChannelsStatusViewProps {
 
 export function ChannelsStatusView({ channels, loading, spinning, refresh }: ChannelsStatusViewProps) {
   const entries = Object.entries(channels);
+  const showSkeleton = useDeferredLoading(loading && entries.length === 0);
 
   return (
     <div className="p-6">
@@ -39,7 +41,7 @@ export function ChannelsStatusView({ channels, loading, spinning, refresh }: Cha
       />
 
       <div className="mt-4">
-        {loading && entries.length === 0 ? (
+        {showSkeleton ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((i) => (
               <CardSkeleton key={i} />

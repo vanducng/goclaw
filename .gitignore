@@ -32,5 +32,6 @@ ui/web/pnpm-lock.yaml
 
 .mcp.json
 tmp
+.claude/
 
 deploy-*.sh

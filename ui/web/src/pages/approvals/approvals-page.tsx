@@ -9,10 +9,12 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { formatRelativeTime } from "@/lib/format";
 import { useApprovals, type PendingApproval } from "./hooks/use-approvals";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 
 export function ApprovalsPage() {
   const { pending, loading, refresh, approve, deny } = useApprovals();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && pending.length === 0);
   const [denyTarget, setDenyTarget] = useState<PendingApproval | null>(null);
   const [approveTarget, setApproveTarget] = useState<{ approval: PendingApproval; always: boolean } | null>(null);
 
@@ -34,7 +36,7 @@ export function ApprovalsPage() {
       />
 
       <div className="mt-4">
-        {loading && pending.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={3} />
         ) : pending.length === 0 ? (
           <EmptyState

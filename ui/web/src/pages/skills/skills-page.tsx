@@ -12,11 +12,13 @@ import { useSkills, type SkillInfo } from "./hooks/use-skills";
 import { SkillDetailDialog } from "./skill-detail-dialog";
 import { SkillUploadDialog } from "./skill-upload-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { usePagination } from "@/hooks/use-pagination";
 
 export function SkillsPage() {
   const { skills, loading, refresh, getSkill, uploadSkill, deleteSkill } = useSkills();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && skills.length === 0);
   const [search, setSearch] = useState("");
   const [selectedSkill, setSelectedSkill] = useState<(SkillInfo & { content: string }) | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -88,7 +90,7 @@ export function SkillsPage() {
       </div>
 
       <div className="mt-4">
-        {loading && skills.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={5} />
         ) : filtered.length === 0 ? (
           <EmptyState

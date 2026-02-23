@@ -14,11 +14,13 @@ import { formatDate, formatDuration, formatTokens, computeDurationMs } from "@/l
 import { useTraces, type TraceData } from "./hooks/use-traces";
 import { TraceDetailDialog } from "./trace-detail-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import type { AgentEventPayload } from "@/types/chat";
 
 export function TracesPage() {
   const { traces, total, loading, load, getTrace } = useTraces();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && traces.length === 0);
   const [agentFilter, setAgentFilter] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -105,7 +107,7 @@ export function TracesPage() {
       </form>
 
       <div className="mt-4">
-        {loading && traces.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={8} />
         ) : traces.length === 0 ? (
           <EmptyState

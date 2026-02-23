@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function CardSkeleton() {
@@ -34,6 +35,24 @@ export function DetailSkeleton() {
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-10 w-full" />
       </div>
+    </div>
+  );
+}
+
+/** Spinner that only appears after a delay (default 500ms) to avoid flicker on fast loads. */
+export function DeferredSpinner({ delay = 500 }: { delay?: number }) {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShow(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
+
+  if (!show) return null;
+
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
     </div>
   );
 }

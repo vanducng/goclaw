@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useProviders, type ProviderData, type ProviderInput } from "./hooks/use-providers";
 import { ProviderFormDialog } from "./provider-form-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { usePagination } from "@/hooks/use-pagination";
 
 const typeBadge: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -24,6 +25,7 @@ export function ProvidersPage() {
     createProvider, updateProvider, deleteProvider,
   } = useProviders();
   const spinning = useMinLoading(loading);
+  const showSkeleton = useDeferredLoading(loading && providers.length === 0);
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editProvider, setEditProvider] = useState<ProviderData | null>(null);
@@ -87,7 +89,7 @@ export function ProvidersPage() {
       </div>
 
       <div className="mt-4">
-        {loading && providers.length === 0 ? (
+        {showSkeleton ? (
           <TableSkeleton rows={5} />
         ) : filtered.length === 0 ? (
           <EmptyState

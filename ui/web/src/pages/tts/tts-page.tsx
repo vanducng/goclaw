@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { useTtsConfig, type TtsConfig, type TtsProviderConfig } from "./hooks/use-tts-config";
 import { useMinLoading } from "@/hooks/use-min-loading";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 
 const PROVIDERS = [
   { value: "", label: "None (Disabled)" },
@@ -36,6 +37,7 @@ export function TtsPage() {
   const spinning = useMinLoading(loading);
 
   const [draft, setDraft] = useState<TtsConfig>(tts);
+  const showSkeleton = useDeferredLoading(loading && !draft.provider);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export function TtsPage() {
     setDirty(false);
   };
 
-  if (loading && !draft.provider) {
+  if (showSkeleton) {
     return (
       <div className="p-6">
         <PageHeader title="Text-to-Speech" description="Configure TTS providers and auto-apply settings" />
