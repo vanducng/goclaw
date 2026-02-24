@@ -341,7 +341,9 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		effectiveWorkspace := l.workspace
 		if req.UserID != "" {
 			effectiveWorkspace = filepath.Join(l.workspace, sanitizePathSegment(req.UserID))
-			os.MkdirAll(effectiveWorkspace, 0755)
+			if err := os.MkdirAll(effectiveWorkspace, 0755); err != nil {
+				slog.Warn("failed to create user workspace directory", "workspace", effectiveWorkspace, "user", req.UserID, "error", err)
+			}
 		}
 		ctx = tools.WithToolWorkspace(ctx, effectiveWorkspace)
 	}

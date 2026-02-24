@@ -124,8 +124,8 @@ export function TraceDetailDialog({ traceId, onClose, getTrace }: TraceDetailDia
             )}
 
             {trace.error && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3">
-                <p className="text-sm text-destructive">{trace.error}</p>
+              <div className="rounded-md border border-red-400/30 bg-red-500/10 p-3">
+                <p className="break-all text-sm text-red-300">{trace.error}</p>
               </div>
             )}
 
@@ -232,7 +232,7 @@ function SpanTreeNode({ node, depth }: { node: SpanNode; depth: number }) {
               </div>
             )}
             {span.error && (
-              <p className="text-xs text-destructive">{span.error}</p>
+              <p className="break-all text-xs text-red-300">{span.error}</p>
             )}
           </div>
         )}

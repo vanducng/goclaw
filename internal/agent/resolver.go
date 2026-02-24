@@ -122,7 +122,9 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			if !filepath.IsAbs(workspace) {
 				workspace, _ = filepath.Abs(workspace)
 			}
-			os.MkdirAll(workspace, 0755)
+			if err := os.MkdirAll(workspace, 0755); err != nil {
+				slog.Warn("failed to create agent workspace directory", "workspace", workspace, "agent", agentKey, "error", err)
+			}
 		}
 
 		// Per-agent custom tools (clone registry if agent has custom tools)

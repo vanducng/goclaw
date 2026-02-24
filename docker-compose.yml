@@ -23,6 +23,7 @@ services:
       - GOCLAW_CONFIG=/app/data/config.json
     volumes:
       - goclaw-data:/app/data
+      - goclaw-workspace:/app/workspace  # standalone mode workspace
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -40,3 +41,4 @@ services:
 
 volumes:
   goclaw-data:
+  goclaw-workspace:

@@ -38,6 +38,9 @@ var contextFileSet = map[string]bool{
 
 // isContextFile checks if a path refers to a workspace-root context file.
 // Handles both relative ("SOUL.md") and absolute ("/workspace/SOUL.md") paths.
+// Also matches absolute paths under per-user workspace subdirectories
+// (e.g. "/workspace/<userID>/USER.md") since context files at any depth
+// under the workspace root should be routed to DB in managed mode.
 func isContextFile(path, workspace string) (fileName string, ok bool) {
 	base := filepath.Base(path)
 	if !contextFileSet[base] {
@@ -50,11 +53,12 @@ func isContextFile(path, workspace string) (fileName string, ok bool) {
 		return base, true
 	}
 
-	// Absolute path at workspace root: "/path/to/workspace/SOUL.md"
+	// Absolute path under workspace (includes per-user subdirectories):
+	// "/workspace/SOUL.md" or "/workspace/<userID>/SOUL.md"
 	if workspace != "" && filepath.IsAbs(path) {
 		cleanPath := filepath.Clean(path)
 		cleanWS := filepath.Clean(workspace)
-		if filepath.Dir(cleanPath) == cleanWS {
+		if strings.HasPrefix(filepath.Dir(cleanPath), cleanWS) {
 			return base, true
 		}
 	}
