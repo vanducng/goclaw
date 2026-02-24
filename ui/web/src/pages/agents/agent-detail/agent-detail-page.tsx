@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +8,7 @@ import { AgentGeneralTab } from "./agent-general-tab";
 import { AgentConfigTab } from "./agent-config-tab";
 import { AgentFilesTab } from "./agent-files-tab";
 import { AgentSharesTab } from "./agent-shares-tab";
+import { SummoningModal } from "../summoning-modal";
 import { DeferredSpinner } from "@/components/shared/loading-skeleton";
 
 interface AgentDetailPageProps {
@@ -31,8 +33,14 @@ function agentSubtitle(agent: { display_name?: string; agent_key: string; id: st
 }
 
 export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
-  const { agent, files, loading, updateAgent, getFile, setFile, regenerateAgent } =
+  const { agent, files, loading, updateAgent, getFile, setFile, regenerateAgent, refresh } =
     useAgentDetail(agentId);
+  const [summoningOpen, setSummoningOpen] = useState(false);
+
+  const handleRegenerate = async (prompt: string) => {
+    await regenerateAgent(prompt);
+    setSummoningOpen(true);
+  };
 
   if (loading || !agent) {
     return (
@@ -64,8 +72,8 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
             {agent.is_default && (
               <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" />
             )}
-            <Badge variant={agent.status === "active" ? "success" : "secondary"}>
-              {agent.status}
+            <Badge variant={agent.status === "active" ? "success" : agent.status === "summon_failed" ? "destructive" : "secondary"}>
+              {agent.status === "summon_failed" ? "Summon Failed" : agent.status}
             </Badge>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
@@ -110,7 +118,7 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
               files={files}
               onGetFile={getFile}
               onSetFile={setFile}
-              onRegenerate={regenerateAgent}
+              onRegenerate={handleRegenerate}
             />
           </TabsContent>
 
@@ -119,6 +127,14 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
           </TabsContent>
         </Tabs>
       </div>
+
+      <SummoningModal
+        open={summoningOpen}
+        onOpenChange={setSummoningOpen}
+        agentId={agentId}
+        agentName={title}
+        onCompleted={refresh}
+      />
     </div>
   );
 }

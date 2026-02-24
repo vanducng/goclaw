@@ -9,6 +9,7 @@ import { CardSkeleton } from "@/components/shared/loading-skeleton";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useHttp } from "@/hooks/use-ws";
 import { useAgents } from "./hooks/use-agents";
 import { AgentCard } from "./agent-card";
 import { AgentCreateDialog } from "./agent-create-dialog";
@@ -19,6 +20,7 @@ import { usePagination } from "@/hooks/use-pagination";
 export function AgentsPage() {
   const { id: detailId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const http = useHttp();
   const { agents, loading, createAgent, deleteAgent, refresh } = useAgents();
   const showSkeleton = useDeferredLoading(loading && agents.length === 0);
 
@@ -26,6 +28,15 @@ export function AgentsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [summoningAgent, setSummoningAgent] = useState<{ id: string; name: string } | null>(null);
+
+  const handleResummon = async (agent: { id: string; display_name?: string; agent_key: string }) => {
+    try {
+      await http.post(`/v1/agents/${agent.id}/resummon`);
+      setSummoningAgent({ id: agent.id, name: agent.display_name || agent.agent_key });
+    } catch {
+      // error handled by http hook
+    }
+  };
 
   // Show detail view if route has :id
   if (detailId) {
@@ -104,6 +115,7 @@ export function AgentsPage() {
                       navigate(`/agents/${agent.id}`);
                     }
                   }}
+                  onResummon={() => handleResummon(agent)}
                 />
               ))}
             </div>

@@ -7,18 +7,20 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
 // ProvidersHandler handles LLM provider CRUD endpoints (managed mode).
 type ProvidersHandler struct {
-	store store.ProviderStore
-	token string
+	store       store.ProviderStore
+	token       string
+	providerReg *providers.Registry
 }
 
 // NewProvidersHandler creates a handler for provider management endpoints.
-func NewProvidersHandler(s store.ProviderStore, token string) *ProvidersHandler {
-	return &ProvidersHandler{store: s, token: token}
+func NewProvidersHandler(s store.ProviderStore, token string, providerReg *providers.Registry) *ProvidersHandler {
+	return &ProvidersHandler{store: s, token: token, providerReg: providerReg}
 }
 
 // RegisterRoutes registers all provider management routes on the given mux.
@@ -32,6 +34,9 @@ func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Model listing (proxied to upstream provider API)
 	mux.HandleFunc("GET /v1/providers/{id}/models", h.auth(h.handleListProviderModels))
+
+	// Provider + model verification (pre-flight check)
+	mux.HandleFunc("POST /v1/providers/{id}/verify", h.auth(h.handleVerifyProvider))
 }
 
 func (h *ProvidersHandler) auth(next http.HandlerFunc) http.HandlerFunc {

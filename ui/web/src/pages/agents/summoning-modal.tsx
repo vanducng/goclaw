@@ -6,6 +6,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { useHttp } from "@/hooks/use-ws";
 import { useWsEvent } from "@/hooks/use-ws-event";
 
 interface SummoningModalProps {
@@ -31,9 +33,11 @@ export function SummoningModal({
   agentName,
   onCompleted,
 }: SummoningModalProps) {
+  const http = useHttp();
   const [generatedFiles, setGeneratedFiles] = useState<string[]>([]);
   const [status, setStatus] = useState<"summoning" | "completed" | "failed">("summoning");
   const [errorMsg, setErrorMsg] = useState("");
+  const [retrying, setRetrying] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -69,6 +73,20 @@ export function SummoningModal({
   );
 
   useWsEvent("agent.summoning", handleSummoningEvent);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await http.post(`/v1/agents/${agentId}/resummon`);
+      setGeneratedFiles([]);
+      setStatus("summoning");
+      setErrorMsg("");
+    } catch {
+      // stay in failed state
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -187,8 +205,14 @@ export function SummoningModal({
 
           {status === "summoning" && (
             <p className="text-center text-xs text-muted-foreground">
-              This usually takes 10-30 seconds. Please wait...
+              This usually takes few minutes. Please wait...
             </p>
+          )}
+
+          {status === "failed" && (
+            <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying}>
+              {retrying ? "Retrying..." : "Retry"}
+            </Button>
           )}
         </div>
       </DialogContent>

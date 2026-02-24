@@ -49,6 +49,7 @@ func (h *AgentsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/agents/{id}/shares", h.authMiddleware(h.handleShare))
 	mux.HandleFunc("DELETE /v1/agents/{id}/shares/{userID}", h.authMiddleware(h.handleRevokeShare))
 	mux.HandleFunc("POST /v1/agents/{id}/regenerate", h.authMiddleware(h.handleRegenerate))
+	mux.HandleFunc("POST /v1/agents/{id}/resummon", h.authMiddleware(h.handleResummon))
 }
 
 func (h *AgentsHandler) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -418,6 +419,50 @@ func (h *AgentsHandler) handleRegenerate(w http.ResponseWriter, r *http.Request)
 	}
 
 	go h.summoner.RegenerateAgent(id, ag.Provider, ag.Model, req.Prompt)
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"ok": "true", "status": "summoning"})
+}
+
+// handleResummon re-runs SummonAgent from scratch using the original description.
+// Used when initial summoning failed (e.g. wrong model) and user wants to retry.
+func (h *AgentsHandler) handleResummon(w http.ResponseWriter, r *http.Request) {
+	userID := store.UserIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent ID"})
+		return
+	}
+
+	ag, err := h.agents.GetByID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
+		return
+	}
+	if userID != "" && ag.OwnerID != userID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only owner can resummon agent"})
+		return
+	}
+	if ag.Status == "summoning" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "agent is already being summoned"})
+		return
+	}
+	if h.summoner == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "summoning not available"})
+		return
+	}
+
+	description := extractDescription(ag.OtherConfig)
+	if description == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent has no description to resummon from"})
+		return
+	}
+
+	if err := h.agents.Update(r.Context(), id, map[string]any{"status": "summoning"}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	go h.summoner.SummonAgent(id, ag.Provider, ag.Model, description)
 
 	writeJSON(w, http.StatusAccepted, map[string]string{"ok": "true", "status": "summoning"})
 }

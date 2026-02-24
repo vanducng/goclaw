@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import type { AgentData } from "@/types/agent";
 import { slugify, isValidSlug } from "@/lib/slug";
 import { useProviders } from "@/pages/providers/hooks/use-providers";
 import { useProviderModels } from "@/pages/providers/hooks/use-provider-models";
+import { useProviderVerify } from "@/pages/providers/hooks/use-provider-verify";
 import { AGENT_PRESETS } from "./agent-presets";
 
 interface AgentCreateDialogProps {
@@ -49,6 +50,17 @@ export function AgentCreateDialog({ open, onOpenChange, onCreate }: AgentCreateD
     [enabledProviders, provider],
   );
   const { models, loading: modelsLoading } = useProviderModels(selectedProviderId);
+  const { verify, verifying, result: verifyResult, reset: resetVerify } = useProviderVerify();
+
+  // Reset verification when provider or model changes
+  useEffect(() => {
+    resetVerify();
+  }, [provider, model, resetVerify]);
+
+  const handleVerify = async () => {
+    if (!selectedProviderId || !model.trim()) return;
+    await verify(selectedProviderId, model.trim());
+  };
 
   const handleCreate = async () => {
     if (!agentKey.trim()) return;
@@ -84,7 +96,7 @@ export function AgentCreateDialog({ open, onOpenChange, onCreate }: AgentCreateD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Create Agent</DialogTitle>
         </DialogHeader>
@@ -145,13 +157,32 @@ export function AgentCreateDialog({ open, onOpenChange, onCreate }: AgentCreateD
             </div>
             <div className="space-y-2">
               <Label>Model *</Label>
-              <Combobox
-                value={model}
-                onChange={setModel}
-                options={models.map((m) => ({ value: m.id, label: m.name }))}
-                placeholder={modelsLoading ? "Loading models..." : "Enter or select model"}
-              />
-              {provider && !modelsLoading && models.length === 0 && (
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Combobox
+                    value={model}
+                    onChange={setModel}
+                    options={models.map((m) => ({ value: m.id, label: m.name }))}
+                    placeholder={modelsLoading ? "Loading models..." : "Enter or select model"}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3"
+                  disabled={!selectedProviderId || !model.trim() || verifying}
+                  onClick={handleVerify}
+                >
+                  {verifying ? "..." : "Check"}
+                </Button>
+              </div>
+              {verifyResult && (
+                <p className={`text-xs ${verifyResult.valid ? "text-emerald-400" : "text-red-400"}`}>
+                  {verifyResult.valid ? "Model verified" : verifyResult.error || "Verification failed"}
+                </p>
+              )}
+              {!verifyResult && provider && !modelsLoading && models.length === 0 && (
                 <p className="text-xs text-muted-foreground">This provider doesn't list models — type the model ID manually.</p>
               )}
             </div>
@@ -218,9 +249,13 @@ export function AgentCreateDialog({ open, onOpenChange, onCreate }: AgentCreateD
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={!displayName.trim() || !agentKey.trim() || !isValidSlug(agentKey) || !provider.trim() || !model.trim() || loading}>
-            {loading ? "Creating..." : "Create"}
-          </Button>
+          {loading ? (
+            <Button disabled>Creating...</Button>
+          ) : (
+            <Button onClick={handleCreate} disabled={!displayName.trim() || !agentKey.trim() || !isValidSlug(agentKey) || !provider.trim() || !model.trim() || !verifyResult?.valid}>
+              Create
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

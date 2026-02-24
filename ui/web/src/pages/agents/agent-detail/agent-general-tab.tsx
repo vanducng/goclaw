@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Save, Copy, Check, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { useProviders } from "@/pages/providers/hooks/use-providers";
 import { useProviderModels } from "@/pages/providers/hooks/use-provider-models";
+import { useProviderVerify } from "@/pages/providers/hooks/use-provider-verify";
 import type { AgentData } from "@/types/agent";
 
 interface AgentGeneralTabProps {
@@ -35,6 +36,21 @@ export function AgentGeneralTab({ agent, onUpdate }: AgentGeneralTabProps) {
     [enabledProviders, provider],
   );
   const { models, loading: modelsLoading } = useProviderModels(selectedProviderId);
+  const { verify, verifying, result: verifyResult, reset: resetVerify } = useProviderVerify();
+
+  // Track whether provider/model changed from saved values
+  const llmChanged = provider !== agent.provider || model !== agent.model;
+
+  // Reset verification when provider or model changes
+  useEffect(() => {
+    resetVerify();
+  }, [provider, model, resetVerify]);
+
+  const handleVerify = async () => {
+    if (!selectedProviderId || !model.trim()) return;
+    await verify(selectedProviderId, model.trim());
+  };
+
   const [contextWindow, setContextWindow] = useState(agent.context_window || 200000);
   const [maxToolIterations, setMaxToolIterations] = useState(agent.max_tool_iterations || 20);
   const [restrictToWorkspace, setRestrictToWorkspace] = useState(agent.restrict_to_workspace);
@@ -118,6 +134,9 @@ export function AgentGeneralTab({ agent, onUpdate }: AgentGeneralTabProps) {
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
+                  {status === "summon_failed" && (
+                    <SelectItem value="summon_failed" disabled>Summon Failed</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -163,12 +182,33 @@ export function AgentGeneralTab({ agent, onUpdate }: AgentGeneralTabProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="model">Model</Label>
-              <Combobox
-                value={model}
-                onChange={setModel}
-                options={models.map((m) => ({ value: m.id, label: m.name }))}
-                placeholder={modelsLoading ? "Loading models..." : "Enter or select model"}
-              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Combobox
+                    value={model}
+                    onChange={setModel}
+                    options={models.map((m) => ({ value: m.id, label: m.name }))}
+                    placeholder={modelsLoading ? "Loading models..." : "Enter or select model"}
+                  />
+                </div>
+                {llmChanged && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3"
+                    disabled={!selectedProviderId || !model.trim() || verifying}
+                    onClick={handleVerify}
+                  >
+                    {verifying ? "..." : "Check"}
+                  </Button>
+                )}
+              </div>
+              {verifyResult && (
+                <p className={`text-xs ${verifyResult.valid ? "text-emerald-400" : "text-red-400"}`}>
+                  {verifyResult.valid ? "Model verified" : verifyResult.error || "Verification failed"}
+                </p>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -238,7 +278,7 @@ export function AgentGeneralTab({ agent, onUpdate }: AgentGeneralTabProps) {
             <Check className="h-3.5 w-3.5" /> Saved
           </span>
         )}
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving || (llmChanged && !verifyResult?.valid)}>
           {!saving && <Save className="h-4 w-4" />}
           {saving ? "Saving..." : "Save Changes"}
         </Button>

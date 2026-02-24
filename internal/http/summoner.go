@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/bootstrap"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -48,9 +49,9 @@ func NewAgentSummoner(agents store.AgentStore, providerReg *providers.Registry, 
 // SummonAgent generates context files from a natural language description.
 // Meant to be called as a goroutine: go summoner.SummonAgent(...)
 // On success: stores generated files and sets agent status to "active".
-// On failure: keeps template files (already seeded) and sets status to "active".
+// On failure: keeps template files (already seeded) and sets status to "summon_failed".
 func (s *AgentSummoner) SummonAgent(agentID uuid.UUID, providerName, model, description string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
 	s.emitEvent(agentID, "started", "", "")
@@ -60,7 +61,8 @@ func (s *AgentSummoner) SummonAgent(agentID uuid.UUID, providerName, model, desc
 		slog.Warn("summoning: LLM generation failed, falling back to templates",
 			"agent", agentID, "error", err)
 		s.emitEvent(agentID, "failed", "", err.Error())
-		s.setAgentStatus(ctx, agentID, "active")
+		// Use fresh context — the original may have timed out, but we still need to update status.
+		s.setAgentStatus(context.Background(), agentID, "summon_failed")
 		return
 	}
 
@@ -75,7 +77,7 @@ func (s *AgentSummoner) SummonAgent(agentID uuid.UUID, providerName, model, desc
 // Reads existing files, sends them + edit instructions to LLM, stores results.
 // Synchronous — caller should run in goroutine if needed.
 func (s *AgentSummoner) RegenerateAgent(agentID uuid.UUID, providerName, model, editPrompt string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
 	s.emitEvent(agentID, "started", "", "")
@@ -85,7 +87,7 @@ func (s *AgentSummoner) RegenerateAgent(agentID uuid.UUID, providerName, model, 
 	if err != nil {
 		slog.Warn("summoning: failed to read existing files", "agent", agentID, "error", err)
 		s.emitEvent(agentID, "failed", "", err.Error())
-		s.setAgentStatus(ctx, agentID, "active")
+		s.setAgentStatus(context.Background(), agentID, "summon_failed")
 		return
 	}
 
@@ -95,7 +97,8 @@ func (s *AgentSummoner) RegenerateAgent(agentID uuid.UUID, providerName, model, 
 	if err != nil {
 		slog.Warn("summoning: regeneration failed", "agent", agentID, "error", err)
 		s.emitEvent(agentID, "failed", "", err.Error())
-		s.setAgentStatus(ctx, agentID, "active")
+		// Use fresh context — the original may have timed out, but we still need to update status.
+		s.setAgentStatus(context.Background(), agentID, "summon_failed")
 		return
 	}
 
@@ -198,20 +201,45 @@ func (s *AgentSummoner) emitEvent(agentID uuid.UUID, eventType, fileName, errMsg
 }
 
 // buildCreatePrompt constructs the system + user prompt for initial file generation.
+// Includes the full template files as reference so the LLM preserves core operational structure.
 func (s *AgentSummoner) buildCreatePrompt(description string) string {
-	return fmt.Sprintf(`You are setting up a new AI assistant. Based on the description below, generate the content for these context files. Write in the same language as the description.
+	// Load templates as reference material
+	templates := make(map[string]string)
+	for _, name := range summoningFiles {
+		content, err := bootstrap.ReadTemplate(name)
+		if err != nil {
+			slog.Warn("summoning: failed to read template for prompt", "file", name, "error", err)
+			continue
+		}
+		templates[name] = content
+	}
 
-<description>
-%s
-</description>
+	var sb strings.Builder
+	sb.WriteString("You are setting up a new AI assistant. Based on the description below, generate customized content for each context file.\n\n")
 
-Generate each file inside XML tags. Follow the format and spirit of each file type:
+	fmt.Fprintf(&sb, "<description>\n%s\n</description>\n\n", description)
 
-- **SOUL.md**: Who the agent IS. Core personality traits, communication style, boundaries, and values. Written in first person, like a character sheet. Not a job description — a soul.
-- **IDENTITY.md**: Quick identity card. Name, Creature (what kind of entity?), Vibe (how they come across), Emoji (signature), Avatar (leave blank).
-- **AGENTS.md**: Operating instructions. How the agent should behave each session, handle memory, manage safety, work in groups. Keep the core structure from the template but personalize for this agent's purpose.
-- **TOOLS.md**: Notes about tools relevant to this agent's role. What environment-specific details matter.
-- **HEARTBEAT.md**: Periodic tasks (if the agent should check things proactively). Leave minimal/empty if not applicable.
+	sb.WriteString("Below are the DEFAULT TEMPLATES for each file. Use them as the foundation — preserve the core structure and operational rules, but customize the content to match the agent's purpose and personality.\n\n")
+
+	sb.WriteString("<templates>\n")
+	for _, name := range summoningFiles {
+		if content, ok := templates[name]; ok {
+			fmt.Fprintf(&sb, "<file name=%q>\n%s\n</file>\n", name, content)
+		}
+	}
+	sb.WriteString("</templates>\n\n")
+
+	sb.WriteString(`IMPORTANT — Language rule: You MUST write ALL file content in the SAME LANGUAGE as the <description> above. If the description is in Vietnamese, write in Vietnamese. If in English, write in English. The templates below are in English — translate and adapt them to match the description's language. Only keep technical terms (file names, code, commands) in English.
+
+Instructions for each file:
+
+- **SOUL.md**: Rewrite to reflect this agent's unique personality, values, communication style, and boundaries. Keep the spirit of the template (genuine helpfulness, opinions, resourcefulness) but make it specific to this agent's role.
+- **IDENTITY.md**: Fill in the identity card fields (Name, Creature, Vibe, Emoji) based on the description. Leave Avatar blank.
+- **AGENTS.md**: This is CRITICAL — you MUST preserve the core operational sections (First Run, Every Session, Memory, Safety, External vs Internal, Group Chats, Heartbeats). Customize the content within each section to fit the agent's purpose, but do NOT remove any section. The operational structure is required for the system to function.
+- **TOOLS.md**: Customize with tool notes relevant to this agent's role. Keep the structure.
+- **HEARTBEAT.md**: Add periodic tasks if relevant to the agent's role. Leave minimal if not applicable.
+
+Generate each file inside XML tags:
 
 <file name="SOUL.md">
 (generate here)
@@ -227,7 +255,9 @@ Generate each file inside XML tags. Follow the format and spirit of each file ty
 </file>
 <file name="HEARTBEAT.md">
 (generate here)
-</file>`, description)
+</file>`)
+
+	return sb.String()
 }
 
 // buildEditPrompt constructs the prompt for editing existing files.
@@ -242,6 +272,7 @@ func (s *AgentSummoner) buildEditPrompt(existing []store.AgentContextFileData, e
 	}
 	sb.WriteString("</current_files>\n\n")
 	fmt.Fprintf(&sb, "<edit_instructions>\n%s\n</edit_instructions>\n\n", editPrompt)
+	sb.WriteString("IMPORTANT — Language rule: Write ALL content in the SAME LANGUAGE as the existing files above. If the current files are in Vietnamese, write in Vietnamese. Only keep technical terms (file names, code, commands) in English.\n\n")
 	sb.WriteString("Generate updated files. Only include files that need changes. Keep the same XML format:\n\n")
 	sb.WriteString("<file name=\"SOUL.md\">\n(updated content, or omit if unchanged)\n</file>\n")
 	sb.WriteString("...\n")

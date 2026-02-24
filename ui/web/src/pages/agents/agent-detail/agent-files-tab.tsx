@@ -49,7 +49,10 @@ export function AgentFilesTab({ agent, files, onGetFile, onSetFile, onRegenerate
   const canEdit = !isPredefined || isOwner;
 
   // Hide MEMORY.json — memory is managed by the memory system, not context files
-  const displayFiles = files.filter((f) => f.name !== "MEMORY.json");
+  // Hide BOOTSTRAP.md for predefined agents — it's a per-user onboarding file, not agent-level
+  const displayFiles = files.filter((f) =>
+    f.name !== "MEMORY.json" && !(isPredefined && f.name === "BOOTSTRAP.md"),
+  );
   const allMissing = displayFiles.length > 0 && displayFiles.every((f) => f.missing);
 
   // USER.md is per-user at runtime — not editable from the agent admin UI for predefined agents

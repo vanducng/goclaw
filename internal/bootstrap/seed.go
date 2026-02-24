@@ -21,6 +21,15 @@ var templateFiles = []string{
 	HeartbeatFile,
 }
 
+// ReadTemplate returns the content of an embedded template file.
+func ReadTemplate(name string) (string, error) {
+	content, err := templateFS.ReadFile(filepath.Join("templates", name))
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
 // EnsureWorkspaceFiles seeds template files into a workspace directory.
 // Only writes files that don't already exist (will not overwrite).
 // BOOTSTRAP.md is only seeded if the workspace is brand new (no AGENTS.md exists).

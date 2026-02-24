@@ -1,15 +1,17 @@
-import { Bot, Star } from "lucide-react";
+import { Bot, Star, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { AgentData } from "@/types/agent";
 
 interface AgentCardProps {
   agent: AgentData;
   onClick: () => void;
+  onResummon?: () => void;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function AgentCard({ agent, onClick }: AgentCardProps) {
+export function AgentCard({ agent, onClick, onResummon }: AgentCardProps) {
   const displayName = agent.display_name
     || (UUID_RE.test(agent.agent_key) ? "Unnamed Agent" : agent.agent_key);
 
@@ -42,6 +44,10 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
           <Badge variant="outline" className="shrink-0 animate-pulse border-violet-400 text-violet-600 dark:text-violet-400">
             Summoning...
           </Badge>
+        ) : agent.status === "summon_failed" ? (
+          <Badge variant="destructive" className="shrink-0">
+            Failed
+          </Badge>
         ) : (
           <Badge variant={agent.status === "active" ? "success" : "secondary"} className="shrink-0">
             {agent.status}
@@ -63,6 +69,20 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
           <span className="text-[11px] text-muted-foreground">
             {(agent.context_window / 1000).toFixed(0)}K ctx
           </span>
+        )}
+        {agent.status === "summon_failed" && onResummon && (
+          <Button
+            variant="outline"
+            size="xs"
+            className="ml-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              onResummon();
+            }}
+          >
+            <RotateCcw className="h-3 w-3" />
+            Resummon
+          </Button>
         )}
       </div>
     </button>
