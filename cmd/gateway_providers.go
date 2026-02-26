@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
@@ -51,7 +52,8 @@ func registerProviders(registry *providers.Registry, cfg *config.Config) {
 	}
 
 	if cfg.Providers.MiniMax.APIKey != "" {
-		registry.Register(providers.NewOpenAIProvider("minimax", cfg.Providers.MiniMax.APIKey, "https://api.minimax.io/v1", "MiniMax-M2.5"))
+		registry.Register(providers.NewOpenAIProvider("minimax", cfg.Providers.MiniMax.APIKey, "https://api.minimax.io/v1", "MiniMax-M2.5").
+			WithChatPath("/text/chatcompletion_v2"))
 		slog.Info("registered provider", "name", "minimax")
 	}
 
@@ -82,7 +84,12 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 		if p.ProviderType == "anthropic_native" {
 			registry.Register(providers.NewAnthropicProvider(p.APIKey))
 		} else {
-			registry.Register(providers.NewOpenAIProvider(p.Name, p.APIKey, p.APIBase, ""))
+			prov := providers.NewOpenAIProvider(p.Name, p.APIKey, p.APIBase, "")
+			// MiniMax native API uses a different chat path for vision support.
+			if p.Name == "minimax" && strings.Contains(p.APIBase, "minimax.io") {
+				prov.WithChatPath("/text/chatcompletion_v2")
+			}
+			registry.Register(prov)
 		}
 		slog.Info("registered provider from DB", "name", p.Name)
 	}

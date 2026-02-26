@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
@@ -129,6 +130,16 @@ func (m *Manager) dispatchOutbound(ctx context.Context) {
 					"channel", msg.Channel,
 					"error", err,
 				)
+			}
+
+			// Clean up temporary media files after successful (or failed) send.
+			// Files are created by tools (create_image, tts) and only needed for the send.
+			for _, media := range msg.Media {
+				if media.URL != "" {
+					if err := os.Remove(media.URL); err != nil {
+						slog.Debug("failed to clean up media file", "path", media.URL, "error", err)
+					}
+				}
 			}
 		}
 	}

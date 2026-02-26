@@ -42,12 +42,19 @@ type StreamChunk struct {
 	Done      bool   `json:"done,omitempty"`
 }
 
+// ImageContent represents a base64-encoded image for vision-capable models.
+type ImageContent struct {
+	MimeType string `json:"mime_type"` // e.g. "image/jpeg"
+	Data     string `json:"data"`      // base64-encoded image bytes
+}
+
 // Message represents a conversation message.
 type Message struct {
-	Role       string     `json:"role"`                  // "system", "user", "assistant", "tool"
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"` // for role="tool" responses
+	Role       string         `json:"role"`                  // "system", "user", "assistant", "tool"
+	Content    string         `json:"content"`
+	Images     []ImageContent `json:"images,omitempty"`      // vision: base64 images
+	ToolCalls  []ToolCall     `json:"tool_calls,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"` // for role="tool" responses
 }
 
 // ToolCall represents a tool invocation requested by the LLM.

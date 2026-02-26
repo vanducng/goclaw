@@ -53,7 +53,10 @@ func SanitizeAssistantContent(content string) string {
 	// 6. Collapse consecutive duplicate blocks
 	content = collapseConsecutiveDuplicateBlocks(content)
 
-	// 7. Strip leading blank lines (preserve indentation)
+	// 7. Strip MEDIA: paths from LLM output (media delivered separately)
+	content = stripMediaPaths(content)
+
+	// 8. Strip leading blank lines (preserve indentation)
 	content = stripLeadingBlankLines(content)
 
 	content = strings.TrimSpace(content)
@@ -277,7 +280,28 @@ func collapseConsecutiveDuplicateBlocks(content string) string {
 	return collapsed
 }
 
-// --- 7. Strip leading blank lines ---
+// --- 7. Strip MEDIA: paths ---
+
+// stripMediaPaths removes lines containing MEDIA:/path references from LLM output.
+// These are tool result artifacts that should not appear in user-facing text
+// (media files are delivered separately via OutboundMessage.Media).
+func stripMediaPaths(content string) string {
+	if !strings.Contains(content, "MEDIA:") {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	var result []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "MEDIA:") || strings.HasPrefix(trimmed, "[[audio_as_voice]]") {
+			continue
+		}
+		result = append(result, line)
+	}
+	return strings.TrimSpace(strings.Join(result, "\n"))
+}
+
+// --- 8. Strip leading blank lines ---
 
 var leadingBlankLinesPattern = regexp.MustCompile(`^(?:[ \t]*\r?\n)+`)
 

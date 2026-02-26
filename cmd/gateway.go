@@ -182,6 +182,10 @@ func runGateway() {
 	toolsReg.Register(webFetchTool)
 	slog.Info("web_fetch tool enabled")
 
+	// Vision fallback tool (for non-vision providers like MiniMax)
+	toolsReg.Register(tools.NewReadImageTool(providerRegistry))
+	toolsReg.Register(tools.NewCreateImageTool(providerRegistry))
+
 	// TTS (text-to-speech) system
 	ttsMgr := setupTTS(cfg)
 	if ttsMgr != nil {

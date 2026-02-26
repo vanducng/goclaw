@@ -18,6 +18,7 @@ type OpenAIProvider struct {
 	name         string
 	apiKey       string
 	apiBase      string
+	chatPath     string // defaults to "/chat/completions"
 	defaultModel string
 	client       *http.Client
 	retryConfig  RetryConfig
@@ -33,14 +34,23 @@ func NewOpenAIProvider(name, apiKey, apiBase, defaultModel string) *OpenAIProvid
 		name:         name,
 		apiKey:       apiKey,
 		apiBase:      apiBase,
+		chatPath:     "/chat/completions",
 		defaultModel: defaultModel,
 		client:       &http.Client{Timeout: 120 * time.Second},
 		retryConfig:  DefaultRetryConfig(),
 	}
 }
 
+// WithChatPath returns a copy with a custom chat completions path (e.g. "/text/chatcompletion_v2" for MiniMax native API).
+func (p *OpenAIProvider) WithChatPath(path string) *OpenAIProvider {
+	p.chatPath = path
+	return p
+}
+
 func (p *OpenAIProvider) Name() string        { return p.name }
 func (p *OpenAIProvider) DefaultModel() string { return p.defaultModel }
+func (p *OpenAIProvider) APIKey() string       { return p.apiKey }
+func (p *OpenAIProvider) APIBase() string      { return p.apiBase }
 
 // resolveModel returns the model ID to use for a request.
 // For OpenRouter, model IDs require a provider prefix (e.g. "anthropic/claude-sonnet-4-5-20250929").
@@ -184,7 +194,24 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 
 		// Include content; omit empty content for assistant messages with tool_calls
 		// (Gemini rejects empty content → "must include at least one parts field").
-		if m.Content != "" || len(m.ToolCalls) == 0 {
+		if m.Role == "user" && len(m.Images) > 0 {
+			var parts []map[string]interface{}
+			for _, img := range m.Images {
+				parts = append(parts, map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": fmt.Sprintf("data:%s;base64,%s", img.MimeType, img.Data),
+					},
+				})
+			}
+			if m.Content != "" {
+				parts = append(parts, map[string]interface{}{
+					"type": "text",
+					"text": m.Content,
+				})
+			}
+			msg["content"] = parts
+		} else if m.Content != "" || len(m.ToolCalls) == 0 {
 			msg["content"] = m.Content
 		}
 
@@ -247,7 +274,7 @@ func (p *OpenAIProvider) doRequest(ctx context.Context, body interface{}) (io.Re
 		return nil, fmt.Errorf("%s: marshal request: %w", p.name, err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/chat/completions", bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+p.chatPath, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("%s: create request: %w", p.name, err)
 	}

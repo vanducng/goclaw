@@ -358,30 +358,49 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 }
 
 // detectMention checks if a Telegram message mentions the bot.
+// Checks both msg.Text/Entities (text messages) and msg.Caption/CaptionEntities (photo/media messages).
 func (c *Channel) detectMention(msg *telego.Message, botUsername string) bool {
 	if botUsername == "" {
 		return false
 	}
+	lowerBot := strings.ToLower(botUsername)
 
-	for _, entity := range msg.Entities {
-		if entity.Type == "mention" && msg.Text != "" {
-			mentioned := msg.Text[entity.Offset : entity.Offset+entity.Length]
-			if strings.EqualFold(mentioned, "@"+botUsername) {
-				return true
-			}
+	// Check both text entities and caption entities (photos use Caption, not Text).
+	for _, pair := range []struct {
+		entities []telego.MessageEntity
+		text     string
+	}{
+		{msg.Entities, msg.Text},
+		{msg.CaptionEntities, msg.Caption},
+	} {
+		if pair.text == "" {
+			continue
 		}
-		if entity.Type == "bot_command" && msg.Text != "" {
-			cmdText := msg.Text[entity.Offset : entity.Offset+entity.Length]
-			if strings.Contains(strings.ToLower(cmdText), "@"+strings.ToLower(botUsername)) {
-				return true
+		for _, entity := range pair.entities {
+			if entity.Type == "mention" {
+				mentioned := pair.text[entity.Offset : entity.Offset+entity.Length]
+				if strings.EqualFold(mentioned, "@"+botUsername) {
+					return true
+				}
+			}
+			if entity.Type == "bot_command" {
+				cmdText := pair.text[entity.Offset : entity.Offset+entity.Length]
+				if strings.Contains(strings.ToLower(cmdText), "@"+lowerBot) {
+					return true
+				}
 			}
 		}
 	}
 
-	if msg.Text != "" && strings.Contains(strings.ToLower(msg.Text), "@"+strings.ToLower(botUsername)) {
+	// Fallback: substring check in both text and caption
+	if msg.Text != "" && strings.Contains(strings.ToLower(msg.Text), "@"+lowerBot) {
+		return true
+	}
+	if msg.Caption != "" && strings.Contains(strings.ToLower(msg.Caption), "@"+lowerBot) {
 		return true
 	}
 
+	// Reply to bot's message = implicit mention
 	if msg.ReplyToMessage != nil && msg.ReplyToMessage.From != nil {
 		if msg.ReplyToMessage.From.Username == botUsername {
 			return true

@@ -220,6 +220,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 type RunRequest struct {
 	SessionKey       string // composite key: agent:{agentId}:{channel}:{peerKind}:{chatId}
 	Message          string // user message
+	Media            []string // local file paths to images (already sanitized)
 	Channel          string // source channel
 	ChatID           string // source chat ID
 	PeerKind         string // "direct" or "group" (for session key building and tool context)
@@ -235,10 +236,18 @@ type RunRequest struct {
 
 // RunResult is the output of a completed agent run.
 type RunResult struct {
-	Content    string      `json:"content"`
-	RunID      string      `json:"runId"`
-	Iterations int         `json:"iterations"`
+	Content    string           `json:"content"`
+	RunID      string           `json:"runId"`
+	Iterations int              `json:"iterations"`
 	Usage      *providers.Usage `json:"usage,omitempty"`
+	Media      []MediaResult    `json:"media,omitempty"` // media files from tool results (MEDIA: prefix)
+}
+
+// MediaResult represents a media file produced by a tool during the agent run.
+type MediaResult struct {
+	Path        string `json:"path"`                  // local file path
+	ContentType string `json:"content_type,omitempty"` // MIME type
+	AsVoice     bool   `json:"as_voice,omitempty"`     // send as voice message (Telegram OGG)
 }
 
 // Run processes a single message through the agent loop.
@@ -351,6 +360,15 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	if req.SenderID != "" {
 		ctx = store.WithSenderID(ctx, req.SenderID)
 	}
+	// Inject per-agent vision/imagegen config for read_image/create_image tools
+	if l.agentToolPolicy != nil {
+		if l.agentToolPolicy.Vision != nil {
+			ctx = tools.WithVisionConfig(ctx, l.agentToolPolicy.Vision)
+		}
+		if l.agentToolPolicy.ImageGen != nil {
+			ctx = tools.WithImageGenConfig(ctx, l.agentToolPolicy.ImageGen)
+		}
+	}
 
 	// Per-user workspace isolation.
 	// Each user gets a subdirectory within the agent's workspace.
@@ -430,19 +448,37 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	// (hadBootstrap) — no extra DB roundtrip needed for bootstrap detection.
 	messages, hadBootstrap := l.buildMessages(ctx, history, summary, req.Message, req.ExtraSystemPrompt, req.SessionKey, req.Channel, req.UserID, req.HistoryLimit)
 
-	// 2. Buffer new messages — write to session only AFTER the run completes.
+	// 2. Attach vision images to the current user message (last in messages slice).
+	// Images are only attached to the live request, NOT persisted in session history.
+	if len(req.Media) > 0 {
+		if images := loadImages(req.Media); len(images) > 0 {
+			messages[len(messages)-1].Images = images
+			ctx = tools.WithMediaImages(ctx, images) // make images available to read_image tool
+			slog.Info("vision: attached images to user message", "count", len(images), "agent", l.id, "session", req.SessionKey)
+		}
+		// Clean up temp media files — they're now base64-encoded in memory.
+		for _, p := range req.Media {
+			if err := os.Remove(p); err != nil {
+				slog.Debug("vision: failed to clean temp media file", "path", p, "error", err)
+			}
+		}
+	}
+
+	// 3. Buffer new messages — write to session only AFTER the run completes.
 	// This prevents concurrent runs from seeing each other's in-progress messages.
+	// NOTE: pendingMsgs stores TEXT ONLY (no images) to avoid bloating session storage.
 	var pendingMsgs []providers.Message
 	pendingMsgs = append(pendingMsgs, providers.Message{
 		Role:    "user",
 		Content: req.Message,
 	})
 
-	// 3. Run LLM iteration loop
+	// 4. Run LLM iteration loop
 	var totalUsage providers.Usage
 	iteration := 0
 	var finalContent string
-	var asyncToolCalls []string // track async spawn tool names for fallback
+	var asyncToolCalls []string  // track async spawn tool names for fallback
+	var mediaResults []MediaResult // media files from tool MEDIA: results
 
 	for iteration < l.maxIterations {
 		iteration++
@@ -533,7 +569,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 			toolSpanStart := time.Now().UTC()
 			result := l.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, req.Channel, req.ChatID, req.PeerKind, req.SessionKey, nil)
 
-			l.emitToolSpan(ctx, toolSpanStart, tc.Name, tc.ID, string(argsJSON), result.ForLLM, result.IsError)
+			l.emitToolSpan(ctx, toolSpanStart, tc.Name, tc.ID, string(argsJSON), result)
 
 			if result.Async {
 				asyncToolCalls = append(asyncToolCalls, tc.Name)
@@ -557,6 +593,11 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 					"is_error": result.IsError,
 				},
 			})
+
+			// Collect MEDIA: paths from tool results
+			if mr := parseMediaResult(result.ForLLM); mr != nil {
+				mediaResults = append(mediaResults, *mr)
+			}
 
 			toolMsg := providers.Message{
 				Role:       "tool",
@@ -619,7 +660,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 
 			// 5. Process results sequentially: emit events, append messages, save to session
 			for _, r := range collected {
-				l.emitToolSpan(ctx, r.spanStart, r.tc.Name, r.tc.ID, r.argsJSON, r.result.ForLLM, r.result.IsError)
+				l.emitToolSpan(ctx, r.spanStart, r.tc.Name, r.tc.ID, r.argsJSON, r.result)
 
 				if r.result.Async {
 					asyncToolCalls = append(asyncToolCalls, r.tc.Name)
@@ -643,6 +684,11 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 						"is_error": r.result.IsError,
 					},
 				})
+
+				// Collect MEDIA: paths from tool results
+				if mr := parseMediaResult(r.result.ForLLM); mr != nil {
+					mediaResults = append(mediaResults, *mr)
+				}
 
 				toolMsg := providers.Message{
 					Role:       "tool",
@@ -723,7 +769,67 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		RunID:      req.RunID,
 		Iterations: iteration,
 		Usage:      &totalUsage,
+		Media:      mediaResults,
 	}, nil
+}
+
+// parseMediaResult extracts a MediaResult from a tool result string containing "MEDIA:" prefix.
+// Handles formats: "MEDIA:/path/to/file" and "[[audio_as_voice]]\nMEDIA:/path/to/file".
+// Returns nil if no MEDIA: prefix is found.
+func parseMediaResult(toolOutput string) *MediaResult {
+	s := toolOutput
+	asVoice := false
+
+	// Check for [[audio_as_voice]] tag (TTS voice messages)
+	if strings.Contains(s, "[[audio_as_voice]]") {
+		asVoice = true
+		s = strings.ReplaceAll(s, "[[audio_as_voice]]", "")
+		s = strings.TrimSpace(s)
+	}
+
+	// Find MEDIA: prefix
+	idx := strings.Index(s, "MEDIA:")
+	if idx < 0 {
+		return nil
+	}
+	path := strings.TrimSpace(s[idx+6:])
+	if path == "" {
+		return nil
+	}
+	// Take only the first line (in case there's trailing text)
+	if nl := strings.IndexByte(path, '\n'); nl >= 0 {
+		path = strings.TrimSpace(path[:nl])
+	}
+
+	return &MediaResult{
+		Path:        path,
+		ContentType: mimeFromExt(filepath.Ext(path)),
+		AsVoice:     asVoice,
+	}
+}
+
+// mimeFromExt returns a MIME type for common media file extensions.
+func mimeFromExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".mp4":
+		return "video/mp4"
+	case ".ogg", ".opus":
+		return "audio/ogg"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // sanitizePathSegment makes a userID safe for use as a directory name.

@@ -150,6 +150,7 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 		outCh := sched.ScheduleWithOpts(ctx, "main", agent.RunRequest{
 			SessionKey:        sessionKey,
 			Message:           msg.Content,
+			Media:             msg.Media,
 			Channel:           msg.Channel,
 			ChatID:            msg.ChatID,
 			PeerKind:          peerKind,
@@ -225,12 +226,28 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 			}
 
 			// Publish response back to the channel
-			msgBus.PublishOutbound(bus.OutboundMessage{
+			outMsg := bus.OutboundMessage{
 				Channel:  channel,
 				ChatID:   chatID,
 				Content:  outcome.Result.Content,
 				Metadata: meta,
-			})
+			}
+
+			// Convert media results from agent run to outbound media attachments
+			for _, mr := range outcome.Result.Media {
+				outMsg.Media = append(outMsg.Media, bus.MediaAttachment{
+					URL:         mr.Path,
+					ContentType: mr.ContentType,
+				})
+				if mr.AsVoice {
+					if outMsg.Metadata == nil {
+						outMsg.Metadata = make(map[string]string)
+					}
+					outMsg.Metadata["audio_as_voice"] = "true"
+				}
+			}
+
+			msgBus.PublishOutbound(outMsg)
 		}(msg.Channel, msg.ChatID, sessionKey, runID, outMeta)
 	}
 

@@ -255,7 +255,7 @@ function SpanTreeNode({ node, depth }: { node: SpanNode; depth: number }) {
             {span.input_preview && (
               <div>
                 <p className="text-xs text-muted-foreground">Input:</p>
-                <pre className="mt-1 max-h-[40vh] overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs">
+                <pre className="mt-1 max-h-[40vh] overflow-y-auto break-all whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs">
                   {span.input_preview}
                 </pre>
               </div>
@@ -263,7 +263,7 @@ function SpanTreeNode({ node, depth }: { node: SpanNode; depth: number }) {
             {span.output_preview && (
               <div>
                 <p className="text-xs text-muted-foreground">Output:</p>
-                <pre className="mt-1 max-h-[40vh] overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs">
+                <pre className="mt-1 max-h-[40vh] overflow-y-auto break-all whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs">
                   {span.output_preview}
                 </pre>
               </div>

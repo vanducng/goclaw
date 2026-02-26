@@ -12,6 +12,7 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/tracing"
 )
 
@@ -61,10 +62,22 @@ func (l *Loop) emitLLMSpan(ctx context.Context, start time.Time, iteration int, 
 		span.AgentID = &l.agentUUID
 	}
 
-	// Verbose mode: serialize full messages and output
+	// Verbose mode: serialize full messages and output.
+	// Strip base64 image data to avoid bloating traces and PostgreSQL encoding issues.
 	verbose := collector.Verbose()
 	if verbose && len(messages) > 0 {
-		if b, err := json.Marshal(messages); err == nil {
+		stripped := make([]providers.Message, len(messages))
+		copy(stripped, messages)
+		for i := range stripped {
+			if len(stripped[i].Images) > 0 {
+				placeholder := make([]providers.ImageContent, len(stripped[i].Images))
+				for j, img := range stripped[i].Images {
+					placeholder[j] = providers.ImageContent{MimeType: img.MimeType, Data: fmt.Sprintf("[base64 %s, %d bytes]", img.MimeType, len(img.Data))}
+				}
+				stripped[i].Images = placeholder
+			}
+		}
+		if b, err := json.Marshal(stripped); err == nil {
 			span.InputPreview = truncateStr(string(b), 100000)
 		}
 	}
@@ -98,7 +111,8 @@ func (l *Loop) emitLLMSpan(ctx context.Context, start time.Time, iteration int, 
 }
 
 // emitToolSpan records a tool call span if tracing is active.
-func (l *Loop) emitToolSpan(ctx context.Context, start time.Time, toolName, toolCallID, input, output string, isError bool) {
+// result is the full tool execution result, which may contain Usage from inner LLM calls.
+func (l *Loop) emitToolSpan(ctx context.Context, start time.Time, toolName, toolCallID, input string, result *tools.Result) {
 	traceID := tracing.TraceIDFromContext(ctx)
 	collector := tracing.CollectorFromContext(ctx)
 	if collector == nil || traceID == uuid.Nil {
@@ -121,7 +135,7 @@ func (l *Loop) emitToolSpan(ctx context.Context, start time.Time, toolName, tool
 		ToolName:      toolName,
 		ToolCallID:    toolCallID,
 		InputPreview:  truncateStr(input, previewLimit),
-		OutputPreview: truncateStr(output, previewLimit),
+		OutputPreview: truncateStr(result.ForLLM, previewLimit),
 		Status:        store.SpanStatusCompleted,
 		Level:         "DEFAULT",
 		CreatedAt:     now,
@@ -132,9 +146,26 @@ func (l *Loop) emitToolSpan(ctx context.Context, start time.Time, toolName, tool
 	if l.agentUUID != uuid.Nil {
 		span.AgentID = &l.agentUUID
 	}
-	if isError {
+	if result.IsError {
 		span.Status = store.SpanStatusError
-		span.Error = truncateStr(output, 200)
+		span.Error = truncateStr(result.ForLLM, 200)
+	}
+
+	// Record token usage from tools that make internal LLM calls (e.g. read_image).
+	if result.Usage != nil {
+		span.InputTokens = result.Usage.PromptTokens
+		span.OutputTokens = result.Usage.CompletionTokens
+		span.Provider = result.Provider
+		span.Model = result.Model
+		if result.Usage.CacheCreationTokens > 0 || result.Usage.CacheReadTokens > 0 {
+			meta := map[string]int{
+				"cache_creation_tokens": result.Usage.CacheCreationTokens,
+				"cache_read_tokens":     result.Usage.CacheReadTokens,
+			}
+			if b, err := json.Marshal(meta); err == nil {
+				span.Metadata = b
+			}
+		}
 	}
 
 	collector.EmitSpan(span)

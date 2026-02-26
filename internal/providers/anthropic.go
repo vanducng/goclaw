@@ -220,10 +220,34 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 			})
 
 		case "user":
-			messages = append(messages, map[string]interface{}{
-				"role":    "user",
-				"content": msg.Content,
-			})
+			if len(msg.Images) > 0 {
+				var blocks []map[string]interface{}
+				for _, img := range msg.Images {
+					blocks = append(blocks, map[string]interface{}{
+						"type": "image",
+						"source": map[string]interface{}{
+							"type":       "base64",
+							"media_type": img.MimeType,
+							"data":       img.Data,
+						},
+					})
+				}
+				if msg.Content != "" {
+					blocks = append(blocks, map[string]interface{}{
+						"type": "text",
+						"text": msg.Content,
+					})
+				}
+				messages = append(messages, map[string]interface{}{
+					"role":    "user",
+					"content": blocks,
+				})
+			} else {
+				messages = append(messages, map[string]interface{}{
+					"role":    "user",
+					"content": msg.Content,
+				})
+			}
 
 		case "assistant":
 			var blocks []map[string]interface{}

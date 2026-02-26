@@ -25,7 +25,7 @@ var toolGroups = map[string][]string{
 		"browser", "canvas", "nodes", "cron", "message", "gateway",
 		"agents_list", "sessions_list", "sessions_history", "sessions_send",
 		"sessions_spawn", "subagents", "session_status",
-		"memory_search", "memory_get", "web_search", "web_fetch", "image",
+		"memory_search", "memory_get", "web_search", "web_fetch", "read_image", "create_image",
 	},
 }
 
@@ -49,7 +49,7 @@ func UnregisterToolGroup(name string) {
 // Tool profiles define preset allow sets.
 var toolProfiles = map[string][]string{
 	"minimal":   {"session_status"},
-	"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "image"},
+	"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "read_image", "create_image"},
 	"messaging": {"group:messaging", "sessions_list", "sessions_history", "sessions_send", "session_status"},
 	"full":      {}, // empty = no restrictions
 }
