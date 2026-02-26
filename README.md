@@ -372,7 +372,7 @@ chmod +x prepare-env.sh
 ./prepare-env.sh
 ```
 
-The script creates `.env` from `.env.example`, auto-generates `GOCLAW_ENCRYPTION_KEY` and `GOCLAW_GATEWAY_TOKEN`, and prompts for a provider API key. Edit `.env` afterward to fill in any remaining values.
+The script creates `.env` from `.env.example`, auto-generates `GOCLAW_ENCRYPTION_KEY` and `GOCLAW_GATEWAY_TOKEN`, and checks for a provider API key. Add at least one `GOCLAW_*_API_KEY` to `.env` before starting.
 
 **2. Start services:**
 

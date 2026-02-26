@@ -2,20 +2,11 @@
 # prepare-env.sh — Create or update .env with auto-generated secrets.
 # Safe to run multiple times: only fills in missing values, never overwrites existing ones.
 #
-# Usage:
-#   ./prepare-env.sh              # interactive: prompts for provider key
-#   ./prepare-env.sh --quiet      # non-interactive: skip prompts, only generate secrets
+# Usage:  ./prepare-env.sh
 
 set -euo pipefail
 
 ENV_FILE=".env"
-QUIET=false
-
-for arg in "$@"; do
-  case "$arg" in
-    --quiet|-q) QUIET=true ;;
-  esac
-done
 
 # --- helpers ---
 
@@ -52,6 +43,7 @@ set_env_val() {
 
 # --- main ---
 
+echo ""
 echo "=== GoClaw Environment Preparation ==="
 echo ""
 
@@ -60,25 +52,23 @@ if [ ! -f "$ENV_FILE" ]; then
   if [ -f ".env.example" ]; then
     # Strip 'export ' prefix for Docker Compose compatibility
     sed 's/^export //' .env.example > "$ENV_FILE"
-    echo "[created] .env from .env.example (stripped 'export' prefix)"
+    echo "  [created]   .env from .env.example"
   else
     touch "$ENV_FILE"
-    echo "[created] .env (empty)"
+    echo "  [created]   .env (empty)"
   fi
 else
-  echo "[exists]  .env"
+  echo "  [exists]    .env"
 fi
-
-echo ""
 
 # 2. Auto-generate GOCLAW_ENCRYPTION_KEY if missing
 current_enc="$(get_env_val GOCLAW_ENCRYPTION_KEY)"
 if [ -z "$current_enc" ]; then
   new_key="$(gen_hex 32)"
   set_env_val "GOCLAW_ENCRYPTION_KEY" "$new_key"
-  echo "[generated] GOCLAW_ENCRYPTION_KEY"
+  echo "  [generated] GOCLAW_ENCRYPTION_KEY"
 else
-  echo "[exists]    GOCLAW_ENCRYPTION_KEY"
+  echo "  [exists]    GOCLAW_ENCRYPTION_KEY"
 fi
 
 # 3. Auto-generate GOCLAW_GATEWAY_TOKEN if missing
@@ -86,9 +76,9 @@ current_tok="$(get_env_val GOCLAW_GATEWAY_TOKEN)"
 if [ -z "$current_tok" ]; then
   new_tok="$(gen_hex 16)"
   set_env_val "GOCLAW_GATEWAY_TOKEN" "$new_tok"
-  echo "[generated] GOCLAW_GATEWAY_TOKEN"
+  echo "  [generated] GOCLAW_GATEWAY_TOKEN"
 else
-  echo "[exists]    GOCLAW_GATEWAY_TOKEN"
+  echo "  [exists]    GOCLAW_GATEWAY_TOKEN"
 fi
 
 # 4. Check provider API key
@@ -99,35 +89,26 @@ for key in GOCLAW_OPENROUTER_API_KEY GOCLAW_ANTHROPIC_API_KEY GOCLAW_OPENAI_API_
   val="$(get_env_val "$key")"
   if [ -n "$val" ]; then
     has_provider=true
-    echo "[exists]    $key"
+    echo "  [exists]    $key"
     break
   fi
 done
 
 if [ "$has_provider" = false ]; then
+  echo "  [missing]   No LLM provider API key found"
   echo ""
-  echo "[missing] No LLM provider API key found."
-  if [ "$QUIET" = false ]; then
-    echo ""
-    echo "Enter your API key (or press Enter to skip):"
-    echo "  Supported: OpenRouter, Anthropic, OpenAI, MiniMax, Groq, DeepSeek, Gemini, Mistral, xAI"
-    echo ""
-    read -rp "  GOCLAW_OPENROUTER_API_KEY= " api_key
-    if [ -n "$api_key" ]; then
-      set_env_val "GOCLAW_OPENROUTER_API_KEY" "$api_key"
-      echo "[set]       GOCLAW_OPENROUTER_API_KEY"
-    else
-      echo "[skipped]   No API key set — you must add one to .env before starting"
-    fi
-  else
-    echo "  Add at least one GOCLAW_*_API_KEY to .env before starting."
-  fi
+  echo "  Add at least one provider key to .env before starting:"
+  echo "    GOCLAW_OPENROUTER_API_KEY=sk-or-..."
+  echo "    GOCLAW_ANTHROPIC_API_KEY=sk-ant-..."
+  echo "    GOCLAW_MINIMAX_API_KEY=..."
+  echo ""
+  echo "=== Done (action required) ==="
+  echo ""
+  exit 0
 fi
 
 echo ""
 echo "=== Done ==="
 echo ""
-echo "Next steps:"
-echo "  1. Review .env and fill in any remaining values"
-echo "  2. Run: docker compose -f docker-compose.yml -f docker-compose.managed.yml up -d --build"
+echo "  Run: docker compose -f docker-compose.yml -f docker-compose.managed.yml -f docker-compose.selfservice.yml up -d --build"
 echo ""
