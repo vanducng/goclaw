@@ -26,7 +26,7 @@ RUN set -eux; \
     fi; \
     if [ -n "$TAGS" ]; then TAGS="-tags $TAGS"; fi; \
     CGO_ENABLED=0 GOOS=linux \
-    go build -ldflags="-s -w -X main.version=${VERSION}" \
+    go build -ldflags="-s -w -X github.com/nextlevelbuilder/goclaw/cmd.Version=${VERSION}" \
     ${TAGS} -o /out/goclaw .
 
 # ── Stage 2: Runtime ──

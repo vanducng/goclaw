@@ -9,6 +9,9 @@ import (
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
+// Version is set at build time via -ldflags "-X github.com/nextlevelbuilder/goclaw/cmd.Version=v1.0.0"
+var Version = "dev"
+
 var (
 	cfgFile string
 	verbose bool
@@ -46,7 +49,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("goclaw v0.2.0 (protocol %d)\n", protocol.ProtocolVersion)
+			fmt.Printf("goclaw %s (protocol %d)\n", Version, protocol.ProtocolVersion)
 		},
 	}
 }
