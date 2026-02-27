@@ -59,6 +59,9 @@ const MCPPage = lazy(() =>
 const TeamsPage = lazy(() =>
   import("@/pages/teams/teams-page").then((m) => ({ default: m.TeamsPage })),
 );
+const BuiltinToolsPage = lazy(() =>
+  import("@/pages/builtin-tools/builtin-tools-page").then((m) => ({ default: m.BuiltinToolsPage })),
+);
 const TtsPage = lazy(() =>
   import("@/pages/tts/tts-page").then((m) => ({ default: m.TtsPage })),
 );
@@ -111,6 +114,7 @@ export function AppRoutes() {
           <Route path={ROUTES.LOGS} element={<LogsPage />} />
           <Route path={ROUTES.PROVIDERS} element={<ProvidersPage />} />
           <Route path={ROUTES.CUSTOM_TOOLS} element={<CustomToolsPage />} />
+          <Route path={ROUTES.BUILTIN_TOOLS} element={<BuiltinToolsPage />} />
           <Route path={ROUTES.MCP} element={<MCPPage />} />
           <Route path={ROUTES.TTS} element={<TtsPage />} />
         </Route>

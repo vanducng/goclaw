@@ -56,6 +56,9 @@ type ResolverDeps struct {
 
 	// Agent teams (managed mode)
 	TeamStore store.TeamStore // nil if not managed or no teams
+
+	// Builtin tool settings (managed mode)
+	BuiltinToolStore store.BuiltinToolStore // nil if not managed
 }
 
 // NewManagedResolver creates a ResolverFunc that builds Loops from DB agent data.
@@ -210,6 +213,19 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			}
 		}
 
+		// Load global builtin tool settings from DB (for settings cascade)
+		var builtinSettings tools.BuiltinToolSettings
+		if deps.BuiltinToolStore != nil {
+			if allTools, err := deps.BuiltinToolStore.List(ctx); err == nil {
+				builtinSettings = make(tools.BuiltinToolSettings, len(allTools))
+				for _, t := range allTools {
+					if len(t.Settings) > 0 && string(t.Settings) != "{}" {
+						builtinSettings[t.Name] = []byte(t.Settings)
+					}
+				}
+			}
+		}
+
 		loop := NewLoop(LoopConfig{
 			ID:                ag.AgentKey,
 			AgentUUID:         ag.ID,
@@ -239,6 +255,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			SandboxEnabled:         sandboxEnabled,
 			SandboxContainerDir:    sandboxContainerDir,
 			SandboxWorkspaceAccess: sandboxWorkspaceAccess,
+			BuiltinToolSettings:    builtinSettings,
 		})
 
 		slog.Info("resolved agent from DB", "agent", agentKey, "model", ag.Model, "provider", ag.Provider)

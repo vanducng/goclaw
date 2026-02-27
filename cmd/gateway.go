@@ -589,7 +589,7 @@ func runGateway() {
 		}
 
 		wireManagedExtras(managedStores, agentRouter, providerRegistry, msgBus, sessStore, toolsReg, toolPE, skillsLoader, hasMemory, traceCollector, workspace, cfg.Gateway.InjectionAction, cfg, sandboxMgr, dynamicLoader)
-		agentsH, skillsH, tracesH, mcpH, customToolsH, channelInstancesH, providersH, delegationsH := wireManagedHTTP(managedStores, cfg.Gateway.Token, msgBus, toolsReg, providerRegistry, permPE.IsOwner)
+		agentsH, skillsH, tracesH, mcpH, customToolsH, channelInstancesH, providersH, delegationsH, builtinToolsH := wireManagedHTTP(managedStores, cfg.Gateway.Token, msgBus, toolsReg, providerRegistry, permPE.IsOwner)
 		if agentsH != nil {
 			server.SetAgentsHandler(agentsH)
 		}
@@ -613,6 +613,15 @@ func runGateway() {
 		}
 		if delegationsH != nil {
 			server.SetDelegationsHandler(delegationsH)
+		}
+		if builtinToolsH != nil {
+			server.SetBuiltinToolsHandler(builtinToolsH)
+		}
+
+		// Seed + apply builtin tool disables
+		if managedStores.BuiltinTools != nil {
+			seedBuiltinTools(context.Background(), managedStores.BuiltinTools)
+			applyBuiltinToolDisables(context.Background(), managedStores.BuiltinTools, toolsReg)
 		}
 	}
 

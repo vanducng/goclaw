@@ -114,7 +114,7 @@ func (t *CreateImageTool) Execute(ctx context.Context, args map[string]interface
 
 // resolveConfig returns the provider name and model to use for image generation.
 func (t *CreateImageTool) resolveConfig(ctx context.Context) (providerName, model string) {
-	// 1. Check per-agent ImageGenConfig from context
+	// 1. Check per-agent ImageGenConfig from context (highest priority)
 	if cfg := ImageGenConfigFromCtx(ctx); cfg != nil {
 		if cfg.Provider != "" {
 			providerName = cfg.Provider
@@ -124,7 +124,27 @@ func (t *CreateImageTool) resolveConfig(ctx context.Context) (providerName, mode
 		}
 	}
 
-	// 2. If provider not set, find first available from priority list
+	// 2. Check global builtin_tools.settings (DB defaults)
+	if providerName == "" || model == "" {
+		if settings := BuiltinToolSettingsFromCtx(ctx); settings != nil {
+			if raw, ok := settings["create_image"]; ok && len(raw) > 0 {
+				var cfg struct {
+					Provider string `json:"provider"`
+					Model    string `json:"model"`
+				}
+				if json.Unmarshal(raw, &cfg) == nil {
+					if providerName == "" && cfg.Provider != "" {
+						providerName = cfg.Provider
+					}
+					if model == "" && cfg.Model != "" {
+						model = cfg.Model
+					}
+				}
+			}
+		}
+	}
+
+	// 3. If provider not set, find first available from priority list
 	if providerName == "" {
 		for _, name := range imageGenProviderPriority {
 			if _, err := t.registry.Get(name); err == nil {
@@ -137,7 +157,7 @@ func (t *CreateImageTool) resolveConfig(ctx context.Context) (providerName, mode
 		providerName = "openrouter" // fallback even if unavailable (error handled later)
 	}
 
-	// 3. If model not set, use default for this provider
+	// 4. If model not set, use default for this provider
 	if model == "" {
 		if m, ok := imageGenModelDefaults[providerName]; ok {
 			model = m

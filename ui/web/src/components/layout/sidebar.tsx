@@ -14,6 +14,7 @@ import {
   Users,
   Link,
   Wrench,
+  Package,
   Plug,
   Volume2,
   Cpu,
@@ -64,6 +65,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
           <SidebarItem to={ROUTES.SKILLS} icon={Zap} label="Skills" collapsed={collapsed} />
           <SidebarItem to={ROUTES.CRON} icon={Clock} label="Cron" collapsed={collapsed} />
           <SidebarItem to={ROUTES.CUSTOM_TOOLS} icon={Wrench} label="Custom Tools" collapsed={collapsed} />
+          <SidebarItem to={ROUTES.BUILTIN_TOOLS} icon={Package} label="Built-in Tools" collapsed={collapsed} />
           <SidebarItem to={ROUTES.MCP} icon={Plug} label="MCP Servers" collapsed={collapsed} />
         </SidebarGroup>
 

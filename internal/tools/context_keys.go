@@ -100,3 +100,19 @@ func ImageGenConfigFromCtx(ctx context.Context) *config.ImageGenConfig {
 	v, _ := ctx.Value(ctxImageGenConfig).(*config.ImageGenConfig)
 	return v
 }
+
+// --- Builtin tool settings (global DB overrides) ---
+
+const ctxBuiltinToolSettings toolContextKey = "tool_builtin_settings"
+
+// BuiltinToolSettings maps tool name → settings JSON bytes.
+type BuiltinToolSettings map[string][]byte
+
+func WithBuiltinToolSettings(ctx context.Context, settings BuiltinToolSettings) context.Context {
+	return context.WithValue(ctx, ctxBuiltinToolSettings, settings)
+}
+
+func BuiltinToolSettingsFromCtx(ctx context.Context) BuiltinToolSettings {
+	v, _ := ctx.Value(ctxBuiltinToolSettings).(BuiltinToolSettings)
+	return v
+}

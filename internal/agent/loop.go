@@ -97,6 +97,9 @@ type Loop struct {
 	inputGuard      *InputGuard
 	injectionAction string // "log", "warn" (default), "block", "off"
 	maxMessageChars int    // 0 = use default (32000)
+
+	// Global builtin tool settings (from builtin_tools table, managed mode)
+	builtinToolSettings tools.BuiltinToolSettings
 }
 
 // AgentEvent is emitted during agent execution for WS broadcasting.
@@ -156,6 +159,9 @@ type LoopConfig struct {
 	InputGuard      *InputGuard    // nil = auto-create when InjectionAction != "off"
 	InjectionAction string         // "log", "warn" (default), "block", "off"
 	MaxMessageChars int            // 0 = use default (32000)
+
+	// Global builtin tool settings (from builtin_tools table, managed mode)
+	BuiltinToolSettings tools.BuiltinToolSettings
 }
 
 func NewLoop(cfg LoopConfig) *Loop {
@@ -213,6 +219,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 		inputGuard:            guard,
 		injectionAction:       action,
 		maxMessageChars:       cfg.MaxMessageChars,
+		builtinToolSettings:   cfg.BuiltinToolSettings,
 	}
 }
 
@@ -368,6 +375,10 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		if l.agentToolPolicy.ImageGen != nil {
 			ctx = tools.WithImageGenConfig(ctx, l.agentToolPolicy.ImageGen)
 		}
+	}
+	// Inject global builtin tool settings (DB-level defaults, lower priority than per-agent)
+	if l.builtinToolSettings != nil {
+		ctx = tools.WithBuiltinToolSettings(ctx, l.builtinToolSettings)
 	}
 
 	// Per-user workspace isolation.

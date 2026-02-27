@@ -47,6 +47,7 @@ const (
 	CacheKindCron             = "cron"
 	CacheKindCustomTools      = "custom_tools"
 	CacheKindChannelInstances = "channel_instances"
+	CacheKindBuiltinTools     = "builtin_tools"
 )
 
 // CacheInvalidatePayload signals cache layers to evict stale entries.

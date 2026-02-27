@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -106,8 +107,10 @@ func (t *ReadImageTool) Execute(ctx context.Context, args map[string]interface{}
 	return result
 }
 
-// resolveVisionProviderWithConfig checks per-agent VisionConfig first, then falls back to hardcoded priority.
+// resolveVisionProviderWithConfig checks per-agent VisionConfig first,
+// then global builtin_tools.settings, then falls back to hardcoded priority.
 func (t *ReadImageTool) resolveVisionProviderWithConfig(ctx context.Context) (providers.Provider, string, error) {
+	// 1. Per-agent override (highest priority)
 	if cfg := VisionConfigFromCtx(ctx); cfg != nil && cfg.Provider != "" {
 		p, err := t.registry.Get(cfg.Provider)
 		if err != nil {
@@ -119,7 +122,40 @@ func (t *ReadImageTool) resolveVisionProviderWithConfig(ctx context.Context) (pr
 		}
 		return p, model, nil
 	}
+	// 2. Global builtin_tools.settings (DB defaults)
+	if p, model, ok := t.resolveFromBuiltinSettings(ctx); ok {
+		return p, model, nil
+	}
+	// 3. Hardcoded defaults
 	return t.resolveVisionProvider()
+}
+
+// resolveFromBuiltinSettings checks global builtin tool settings for provider/model config.
+func (t *ReadImageTool) resolveFromBuiltinSettings(ctx context.Context) (providers.Provider, string, bool) {
+	settings := BuiltinToolSettingsFromCtx(ctx)
+	if settings == nil {
+		return nil, "", false
+	}
+	raw, ok := settings["read_image"]
+	if !ok || len(raw) == 0 {
+		return nil, "", false
+	}
+	var cfg struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil || cfg.Provider == "" {
+		return nil, "", false
+	}
+	p, err := t.registry.Get(cfg.Provider)
+	if err != nil {
+		return nil, "", false
+	}
+	model := cfg.Model
+	if model == "" {
+		model = p.DefaultModel()
+	}
+	return p, model, true
 }
 
 // resolveVisionProvider finds the first available vision-capable provider.

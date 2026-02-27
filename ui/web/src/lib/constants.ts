@@ -23,6 +23,7 @@ export const ROUTES = {
   TEAMS: "/teams",
   TEAM_DETAIL: "/teams/:id",
   CUSTOM_TOOLS: "/custom-tools",
+  BUILTIN_TOOLS: "/builtin-tools",
   MCP: "/mcp",
   TTS: "/tts",
 } as const;

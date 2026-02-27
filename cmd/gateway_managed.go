@@ -97,6 +97,7 @@ func wireManagedExtras(
 		DynamicLoader:          dynamicLoader,
 		AgentLinkStore:         stores.AgentLinks,
 		TeamStore:              stores.Teams,
+		BuiltinToolStore:       stores.BuiltinTools,
 		OnEvent: func(event agent.AgentEvent) {
 			msgBus.Broadcast(bus.Event{
 				Name:    protocol.EventAgent,
@@ -238,6 +239,21 @@ func wireManagedExtras(
 		})
 	}
 
+	// Builtin tools cache: re-apply disables on settings/enabled changes
+	if stores.BuiltinTools != nil {
+		msgBus.Subscribe("cache:builtin_tools", func(event bus.Event) {
+			if event.Name != protocol.EventCacheInvalidate {
+				return
+			}
+			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
+			if !ok || payload.Kind != bus.CacheKindBuiltinTools {
+				return
+			}
+			applyBuiltinToolDisables(context.Background(), stores.BuiltinTools, toolsReg)
+			agentRouter.InvalidateAll()
+		})
+	}
+
 	// Register delegate tool (inter-agent delegation) if link store is available.
 	// Uses a callback to bridge tools.DelegateRunRequest → agent.RunRequest,
 	// avoiding import cycle between tools and agent packages.
@@ -330,8 +346,8 @@ func wireManagedExtras(
 	slog.Info("managed mode: resolver + interceptors + cache subscribers wired")
 }
 
-// wireManagedHTTP creates managed-mode HTTP handlers (agents + skills + traces + MCP + custom tools + channel instances + providers + delegations).
-func wireManagedHTTP(stores *store.Stores, token string, msgBus *bus.MessageBus, toolsReg *tools.Registry, providerReg *providers.Registry, isOwner func(string) bool) (*httpapi.AgentsHandler, *httpapi.SkillsHandler, *httpapi.TracesHandler, *httpapi.MCPHandler, *httpapi.CustomToolsHandler, *httpapi.ChannelInstancesHandler, *httpapi.ProvidersHandler, *httpapi.DelegationsHandler) {
+// wireManagedHTTP creates managed-mode HTTP handlers (agents + skills + traces + MCP + custom tools + channel instances + providers + delegations + builtin tools).
+func wireManagedHTTP(stores *store.Stores, token string, msgBus *bus.MessageBus, toolsReg *tools.Registry, providerReg *providers.Registry, isOwner func(string) bool) (*httpapi.AgentsHandler, *httpapi.SkillsHandler, *httpapi.TracesHandler, *httpapi.MCPHandler, *httpapi.CustomToolsHandler, *httpapi.ChannelInstancesHandler, *httpapi.ProvidersHandler, *httpapi.DelegationsHandler, *httpapi.BuiltinToolsHandler) {
 	var agentsH *httpapi.AgentsHandler
 	var skillsH *httpapi.SkillsHandler
 	var tracesH *httpapi.TracesHandler
@@ -340,6 +356,7 @@ func wireManagedHTTP(stores *store.Stores, token string, msgBus *bus.MessageBus,
 	var channelInstancesH *httpapi.ChannelInstancesHandler
 	var providersH *httpapi.ProvidersHandler
 	var delegationsH *httpapi.DelegationsHandler
+	var builtinToolsH *httpapi.BuiltinToolsHandler
 
 	if stores != nil && stores.Agents != nil {
 		var summoner *httpapi.AgentSummoner
@@ -382,5 +399,9 @@ func wireManagedHTTP(stores *store.Stores, token string, msgBus *bus.MessageBus,
 		delegationsH = httpapi.NewDelegationsHandler(stores.Teams, token)
 	}
 
-	return agentsH, skillsH, tracesH, mcpH, customToolsH, channelInstancesH, providersH, delegationsH
+	if stores != nil && stores.BuiltinTools != nil {
+		builtinToolsH = httpapi.NewBuiltinToolsHandler(stores.BuiltinTools, token, msgBus)
+	}
+
+	return agentsH, skillsH, tracesH, mcpH, customToolsH, channelInstancesH, providersH, delegationsH, builtinToolsH
 }

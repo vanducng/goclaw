@@ -41,6 +41,7 @@ type Server struct {
 	channelInstancesHandler *httpapi.ChannelInstancesHandler // managed mode: channel instance CRUD API
 	providersHandler        *httpapi.ProvidersHandler        // managed mode: provider CRUD API
 	delegationsHandler      *httpapi.DelegationsHandler      // managed mode: delegation history API
+	builtinToolsHandler     *httpapi.BuiltinToolsHandler     // managed mode: builtin tool management API
 	agentStore         store.AgentStore             // managed mode: for context injection in tools_invoke
 
 	upgrader    websocket.Upgrader
@@ -179,6 +180,11 @@ func (s *Server) BuildMux() *http.ServeMux {
 		s.delegationsHandler.RegisterRoutes(mux)
 	}
 
+	// Managed mode: builtin tool management API
+	if s.builtinToolsHandler != nil {
+		s.builtinToolsHandler.RegisterRoutes(mux)
+	}
+
 	s.mux = mux
 	return mux
 }
@@ -268,6 +274,11 @@ func (s *Server) SetProvidersHandler(h *httpapi.ProvidersHandler) { s.providersH
 
 // SetDelegationsHandler sets the managed-mode delegation history handler.
 func (s *Server) SetDelegationsHandler(h *httpapi.DelegationsHandler) { s.delegationsHandler = h }
+
+// SetBuiltinToolsHandler sets the managed-mode builtin tool management handler.
+func (s *Server) SetBuiltinToolsHandler(h *httpapi.BuiltinToolsHandler) {
+	s.builtinToolsHandler = h
+}
 
 // SetAgentStore sets the agent store for context injection in tools_invoke.
 func (s *Server) SetAgentStore(as store.AgentStore) { s.agentStore = as }

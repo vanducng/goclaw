@@ -17,4 +17,5 @@ type Stores struct {
 	ConfigSecrets    ConfigSecretsStore   // nil in standalone mode
 	AgentLinks       AgentLinkStore       // nil in standalone mode
 	Teams            TeamStore            // nil in standalone mode
+	BuiltinTools     BuiltinToolStore     // nil in standalone mode
 }
