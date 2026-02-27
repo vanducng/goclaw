@@ -3,13 +3,17 @@ set -e
 
 case "${1:-serve}" in
   serve)
-    # Managed mode: auto-run migrations before starting
+    # Managed mode: auto-upgrade (schema migrations + data hooks) before starting.
     if [ "$GOCLAW_MODE" = "managed" ] && [ -n "$GOCLAW_POSTGRES_DSN" ]; then
-      echo "Managed mode: running migrations..."
-      /app/goclaw migrate up --migrations-dir "$GOCLAW_MIGRATIONS_DIR" || \
-        echo "Migration warning (may already be up-to-date)"
+      echo "Managed mode: running upgrade..."
+      /app/goclaw upgrade || \
+        echo "Upgrade warning (may already be up-to-date)"
     fi
     exec /app/goclaw
+    ;;
+  upgrade)
+    shift
+    exec /app/goclaw upgrade "$@"
     ;;
   migrate)
     shift

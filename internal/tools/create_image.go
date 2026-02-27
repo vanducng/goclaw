@@ -132,12 +132,15 @@ func (t *CreateImageTool) resolveConfig(ctx context.Context) (providerName, mode
 					Provider string `json:"provider"`
 					Model    string `json:"model"`
 				}
-				if json.Unmarshal(raw, &cfg) == nil {
-					if providerName == "" && cfg.Provider != "" {
-						providerName = cfg.Provider
-					}
-					if model == "" && cfg.Model != "" {
-						model = cfg.Model
+				if json.Unmarshal(raw, &cfg) == nil && cfg.Provider != "" {
+					// DB settings are a provider+model pair — only use if provider is available
+					if _, err := t.registry.Get(cfg.Provider); err == nil {
+						if providerName == "" {
+							providerName = cfg.Provider
+						}
+						if model == "" && cfg.Model != "" {
+							model = cfg.Model
+						}
 					}
 				}
 			}

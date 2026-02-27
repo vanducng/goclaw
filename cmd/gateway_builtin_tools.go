@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -19,23 +20,43 @@ func builtinToolSeedData() []store.BuiltinToolDef {
 		{Name: "edit", DisplayName: "Edit File", Description: "Apply targeted edits to files (search and replace)", Category: "filesystem", Enabled: true},
 
 		// runtime
-		{Name: "exec", DisplayName: "Execute Command", Description: "Execute shell commands in the workspace", Category: "runtime", Enabled: true},
+		{Name: "exec", DisplayName: "Execute Command", Description: "Execute shell commands in the workspace", Category: "runtime", Enabled: true,
+			Metadata: json.RawMessage(`{"config_hint":"Config → Tools → Exec Approval"}`),
+		},
 
 		// web
-		{Name: "web_search", DisplayName: "Web Search", Description: "Search the web using Brave or DuckDuckGo", Category: "web", Enabled: true},
+		{Name: "web_search", DisplayName: "Web Search", Description: "Search the web using Brave or DuckDuckGo", Category: "web", Enabled: true,
+			Metadata: json.RawMessage(`{"config_hint":"Config → Tools → Web Search"}`),
+		},
 		{Name: "web_fetch", DisplayName: "Web Fetch", Description: "Fetch and extract content from web URLs", Category: "web", Enabled: true},
 
 		// memory
-		{Name: "memory_search", DisplayName: "Memory Search", Description: "Search through stored memory entries", Category: "memory", Enabled: true},
-		{Name: "memory_get", DisplayName: "Memory Get", Description: "Retrieve a specific memory entry by key", Category: "memory", Enabled: true},
+		{Name: "memory_search", DisplayName: "Memory Search", Description: "Search through stored memory entries", Category: "memory", Enabled: true,
+			Requires: []string{"memory"},
+		},
+		{Name: "memory_get", DisplayName: "Memory Get", Description: "Retrieve a specific memory entry by key", Category: "memory", Enabled: true,
+			Requires: []string{"memory"},
+		},
 
 		// media
-		{Name: "read_image", DisplayName: "Read Image", Description: "Analyze images using a vision-capable LLM provider", Category: "media", Enabled: true},
-		{Name: "create_image", DisplayName: "Create Image", Description: "Generate images from text prompts using an image generation provider", Category: "media", Enabled: true},
-		{Name: "tts", DisplayName: "Text to Speech", Description: "Convert text to speech audio", Category: "media", Enabled: true},
+		{Name: "read_image", DisplayName: "Read Image", Description: "Analyze images using a vision-capable LLM provider", Category: "media", Enabled: true,
+			Settings: json.RawMessage(`{"provider":"openrouter","model":"google/gemini-2.5-flash-image"}`),
+			Requires: []string{"vision_provider"},
+		},
+		{Name: "create_image", DisplayName: "Create Image", Description: "Generate images from text prompts using an image generation provider", Category: "media", Enabled: true,
+			Settings: json.RawMessage(`{"provider":"openrouter","model":"google/gemini-2.5-flash-image"}`),
+			Requires: []string{"image_gen_provider"},
+		},
+		{Name: "tts", DisplayName: "Text to Speech", Description: "Convert text to speech audio", Category: "media", Enabled: true,
+			Requires: []string{"tts_provider"},
+			Metadata: json.RawMessage(`{"config_hint":"Config → TTS"}`),
+		},
 
 		// browser
-		{Name: "browser", DisplayName: "Browser", Description: "Automate browser interactions (navigate, click, screenshot)", Category: "browser", Enabled: true},
+		{Name: "browser", DisplayName: "Browser", Description: "Automate browser interactions (navigate, click, screenshot)", Category: "browser", Enabled: true,
+			Requires: []string{"browser"},
+			Metadata: json.RawMessage(`{"config_hint":"Config → Tools → Browser"}`),
+		},
 
 		// sessions
 		{Name: "sessions_list", DisplayName: "List Sessions", Description: "List active chat sessions", Category: "sessions", Enabled: true},
@@ -47,24 +68,42 @@ func builtinToolSeedData() []store.BuiltinToolDef {
 		{Name: "message", DisplayName: "Message", Description: "Send messages to connected channels (Telegram, Discord, etc.)", Category: "messaging", Enabled: true},
 
 		// scheduling
-		{Name: "cron", DisplayName: "Cron Scheduler", Description: "Schedule recurring tasks with cron expressions", Category: "scheduling", Enabled: true},
+		{Name: "cron", DisplayName: "Cron Scheduler", Description: "Schedule recurring tasks with cron expressions", Category: "scheduling", Enabled: true,
+			Metadata: json.RawMessage(`{"config_hint":"Config → Cron"}`),
+		},
 
 		// subagents
-		{Name: "spawn", DisplayName: "Spawn Subagent", Description: "Spawn an asynchronous background subagent", Category: "subagents", Enabled: true},
-		{Name: "subagent", DisplayName: "Subagent", Description: "Run a synchronous subagent and wait for result", Category: "subagents", Enabled: true},
+		{Name: "spawn", DisplayName: "Spawn Subagent", Description: "Spawn an asynchronous background subagent", Category: "subagents", Enabled: true,
+			Metadata: json.RawMessage(`{"config_hint":"Config → Agents Defaults"}`),
+		},
+		{Name: "subagent", DisplayName: "Subagent", Description: "Run a synchronous subagent and wait for result", Category: "subagents", Enabled: true,
+			Metadata: json.RawMessage(`{"config_hint":"Config → Agents Defaults"}`),
+		},
 
 		// skills
 		{Name: "skill_search", DisplayName: "Skill Search", Description: "Search available skills by keyword or description", Category: "skills", Enabled: true},
 
 		// delegation
-		{Name: "delegate", DisplayName: "Delegate", Description: "Delegate a task to another agent", Category: "delegation", Enabled: true},
-		{Name: "delegate_search", DisplayName: "Delegate Search", Description: "Search for agents to delegate tasks to", Category: "delegation", Enabled: true},
-		{Name: "evaluate_loop", DisplayName: "Evaluate Loop", Description: "Run an evaluate-optimize loop with delegated agents", Category: "delegation", Enabled: true},
-		{Name: "handoff", DisplayName: "Handoff", Description: "Transfer conversation to another agent", Category: "delegation", Enabled: true},
+		{Name: "delegate", DisplayName: "Delegate", Description: "Delegate a task to another agent", Category: "delegation", Enabled: true,
+			Requires: []string{"managed_mode", "agent_links"},
+		},
+		{Name: "delegate_search", DisplayName: "Delegate Search", Description: "Search for agents to delegate tasks to", Category: "delegation", Enabled: true,
+			Requires: []string{"managed_mode", "agent_links"},
+		},
+		{Name: "evaluate_loop", DisplayName: "Evaluate Loop", Description: "Run an evaluate-optimize loop with delegated agents", Category: "delegation", Enabled: true,
+			Requires: []string{"managed_mode", "agent_links"},
+		},
+		{Name: "handoff", DisplayName: "Handoff", Description: "Transfer conversation to another agent", Category: "delegation", Enabled: true,
+			Requires: []string{"managed_mode", "agent_links"},
+		},
 
 		// teams
-		{Name: "team_tasks", DisplayName: "Team Tasks", Description: "Manage tasks within a team of agents", Category: "teams", Enabled: true},
-		{Name: "team_message", DisplayName: "Team Message", Description: "Send messages between team agents", Category: "teams", Enabled: true},
+		{Name: "team_tasks", DisplayName: "Team Tasks", Description: "Manage tasks within a team of agents", Category: "teams", Enabled: true,
+			Requires: []string{"managed_mode", "teams"},
+		},
+		{Name: "team_message", DisplayName: "Team Message", Description: "Send messages between team agents", Category: "teams", Enabled: true,
+			Requires: []string{"managed_mode", "teams"},
+		},
 	}
 }
 

@@ -452,8 +452,8 @@ export GOCLAW_MODE=managed
 export GOCLAW_POSTGRES_DSN="postgres://user:pass@localhost:5432/goclaw?sslmode=disable"
 export GOCLAW_ENCRYPTION_KEY=$(openssl rand -hex 32)
 
-# Run migrations
-./goclaw migrate up
+# Run database upgrade (schema migrations + data hooks)
+./goclaw upgrade
 
 # Start gateway
 ./goclaw
@@ -660,7 +660,13 @@ When `GOCLAW_*_API_KEY` environment variables are set, the gateway automatically
 goclaw                    Start gateway (default command)
 goclaw onboard            Interactive setup wizard
 goclaw version            Print version and protocol info
-goclaw doctor             System health check
+goclaw doctor             System health check (includes schema status)
+                          In managed mode: reads providers and channels from DB
+                          In standalone mode: reads from config.json + env vars
+
+goclaw upgrade            Upgrade database schema and run data hooks
+goclaw upgrade --status   Show current vs required schema version
+goclaw upgrade --dry-run  Preview pending changes without applying
 
 goclaw agent list         List configured agents
 goclaw agent chat         Chat with an agent
@@ -712,13 +718,14 @@ See [WebSocket Protocol](websocket-protocol.md) for the real-time RPC protocol (
 
 ## Docker Compose
 
-Seven composable files for different deployment scenarios:
+Eight composable files for different deployment scenarios:
 
 | File                             | Purpose                                            |
 | -------------------------------- | -------------------------------------------------- |
 | `docker-compose.yml`             | Base service definition                            |
 | `docker-compose.standalone.yml`  | File-based storage with persistent volumes         |
 | `docker-compose.managed.yml`     | PostgreSQL (pgvector/pgvector:pg18) + managed mode |
+| `docker-compose.upgrade.yml`     | One-shot database upgrade service                  |
 | `docker-compose.selfservice.yml` | Web dashboard UI (nginx + React SPA)               |
 | `docker-compose.sandbox.yml`     | Docker-based code execution sandbox                |
 | `docker-compose.otel.yml`        | OpenTelemetry + Jaeger tracing                     |
@@ -754,6 +761,27 @@ docker compose -f docker-compose.yml \
 
 # Check health
 curl http://localhost:18790/health
+```
+
+### Upgrading (Managed Mode)
+
+When upgrading to a new version, the entrypoint automatically runs `goclaw upgrade` before starting. For explicit control, use the upgrade overlay:
+
+```bash
+# Preview pending changes (dry-run)
+docker compose -f docker-compose.yml -f docker-compose.managed.yml \
+  -f docker-compose.upgrade.yml run --rm upgrade --dry-run
+
+# Apply upgrade (schema migrations + data hooks), then remove container
+docker compose -f docker-compose.yml -f docker-compose.managed.yml \
+  -f docker-compose.upgrade.yml run --rm upgrade
+
+# Check current schema status
+docker compose -f docker-compose.yml -f docker-compose.managed.yml \
+  -f docker-compose.upgrade.yml run --rm upgrade --status
+
+# Then restart the gateway with the new image
+docker compose -f docker-compose.yml -f docker-compose.managed.yml up -d --build
 ```
 
 ### Environment File (.env)

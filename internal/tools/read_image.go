@@ -27,12 +27,12 @@ func MediaImagesFromCtx(ctx context.Context) []providers.ImageContent {
 // --- ReadImageTool ---
 
 // visionProviderPriority is the order in which providers are tried for vision.
-var visionProviderPriority = []string{"gemini", "anthropic", "openrouter"}
+var visionProviderPriority = []string{"openrouter", "gemini", "anthropic"}
 
 // visionModelOverrides maps provider names to preferred vision models.
 // Providers not listed here use their default model.
 var visionModelOverrides = map[string]string{
-	"openrouter": "google/gemini-2.0-flash-001",
+	"openrouter": "google/gemini-2.5-flash-image",
 }
 
 // ReadImageTool uses a vision-capable provider to describe images attached to the current message.

@@ -306,6 +306,12 @@ func runGateway() {
 	var traceCollector *tracing.Collector
 
 	if cfg.Database.Mode == "managed" && cfg.Database.PostgresDSN != "" {
+		// Schema compatibility check: ensure DB schema matches this binary.
+		if err := checkSchemaOrAutoUpgrade(cfg.Database.PostgresDSN); err != nil {
+			slog.Error("schema compatibility check failed", "error", err)
+			os.Exit(1)
+		}
+
 		storeCfg := store.StoreConfig{
 			PostgresDSN:   cfg.Database.PostgresDSN,
 			Mode:          cfg.Database.Mode,
@@ -872,7 +878,7 @@ func runGateway() {
 		gatewayMode = "managed"
 	}
 	slog.Info("goclaw gateway starting",
-		"version", "0.2.0",
+		"version", Version,
 		"protocol", protocol.ProtocolVersion,
 		"mode", gatewayMode,
 		"agents", agentRouter.List(),

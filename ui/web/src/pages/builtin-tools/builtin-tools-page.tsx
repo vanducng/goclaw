@@ -1,18 +1,50 @@
-import { useState, useEffect } from "react";
-import { Package, RefreshCw, Settings } from "lucide-react";
+import { useState } from "react";
+import { Package, RefreshCw, Settings, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SearchInput } from "@/components/shared/search-input";
-import { Pagination } from "@/components/shared/pagination";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { useBuiltinTools, type BuiltinToolData } from "./hooks/use-builtin-tools";
 import { BuiltinToolSettingsDialog } from "./builtin-tool-settings-dialog";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
-import { usePagination } from "@/hooks/use-pagination";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+const CATEGORY_LABELS: Record<string, string> = {
+  filesystem: "Filesystem",
+  runtime: "Runtime",
+  web: "Web",
+  memory: "Memory",
+  media: "Media",
+  browser: "Browser",
+  sessions: "Sessions",
+  messaging: "Messaging",
+  scheduling: "Scheduling",
+  subagents: "Subagents",
+  skills: "Skills",
+  delegation: "Delegation",
+  teams: "Teams",
+};
+
+const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
+
+function hasEditableSettings(tool: BuiltinToolData): boolean {
+  return tool.settings != null && Object.keys(tool.settings).length > 0;
+}
+
+function getConfigHint(tool: BuiltinToolData): string | undefined {
+  return (tool.metadata as any)?.config_hint as string | undefined;
+}
 
 export function BuiltinToolsPage() {
   const { tools, loading, refresh, updateTool } = useBuiltinTools();
@@ -25,15 +57,18 @@ export function BuiltinToolsPage() {
     (t) =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       t.display_name.toLowerCase().includes(search.toLowerCase()) ||
-      t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.category.toLowerCase().includes(search.toLowerCase()),
+      t.description.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const { pageItems, pagination, setPage, setPageSize, resetPage } = usePagination(filtered, { defaultPageSize: 50 });
-
-  useEffect(() => {
-    resetPage();
-  }, [search, resetPage]);
+  const grouped = new Map<string, BuiltinToolData[]>();
+  for (const tool of filtered) {
+    const cat = tool.category || "general";
+    if (!grouped.has(cat)) grouped.set(cat, []);
+    grouped.get(cat)!.push(tool);
+  }
+  const sortedCategories = [...grouped.keys()].sort(
+    (a, b) => (CATEGORY_ORDER.indexOf(a) ?? 99) - (CATEGORY_ORDER.indexOf(b) ?? 99),
+  );
 
   const handleToggle = async (tool: BuiltinToolData) => {
     await updateTool(tool.name, { enabled: !tool.enabled });
@@ -43,16 +78,11 @@ export function BuiltinToolsPage() {
     await updateTool(name, { settings });
   };
 
-  const hasSettings = (tool: BuiltinToolData) =>
-    tool.settings && Object.keys(tool.settings).length > 0;
-
-  const categories = [...new Set(tools.map((t) => t.category))].sort();
-
   return (
     <div className="p-6">
       <PageHeader
         title="Built-in Tools"
-        description="Manage system built-in tools. Enable/disable tools or configure their settings globally."
+        description="Manage system built-in tools. Enable/disable or configure settings globally."
         actions={
           <Button
             variant="outline"
@@ -71,16 +101,16 @@ export function BuiltinToolsPage() {
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search by name, description, or category..."
+          placeholder="Search tools..."
           className="max-w-sm"
         />
-        <div className="text-sm text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {filtered.length} tool{filtered.length !== 1 ? "s" : ""}
-          {categories.length > 0 && ` across ${categories.length} categories`}
-        </div>
+          {sortedCategories.length > 0 && ` · ${sortedCategories.length} categories`}
+        </span>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 space-y-3">
         {showSkeleton ? (
           <TableSkeleton rows={8} />
         ) : filtered.length === 0 ? (
@@ -92,68 +122,15 @@ export function BuiltinToolsPage() {
             }
           />
         ) : (
-          <div className="rounded-md border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium">Name</th>
-                  <th className="px-4 py-3 text-left font-medium">Description</th>
-                  <th className="px-4 py-3 text-left font-medium">Category</th>
-                  <th className="px-4 py-3 text-center font-medium">Enabled</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageItems.map((tool) => (
-                  <tr
-                    key={tool.name}
-                    className="border-b last:border-0 hover:bg-muted/30"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <span className="font-medium">{tool.display_name}</span>
-                          <span className="ml-2 text-xs text-muted-foreground">{tool.name}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {tool.description || "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline">{tool.category}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <Switch
-                        checked={tool.enabled}
-                        onCheckedChange={() => handleToggle(tool)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSettingsTool(tool)}
-                        className="gap-1"
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        {hasSettings(tool) ? "Edit" : "Settings"}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination
-              page={pagination.page}
-              pageSize={pagination.pageSize}
-              total={pagination.total}
-              totalPages={pagination.totalPages}
-              onPageChange={setPage}
-              onPageSizeChange={setPageSize}
+          sortedCategories.map((category) => (
+            <CategoryGroup
+              key={category}
+              category={category}
+              tools={grouped.get(category)!}
+              onToggle={handleToggle}
+              onSettings={setSettingsTool}
             />
-          </div>
+          ))
         )}
       </div>
 
@@ -165,6 +142,110 @@ export function BuiltinToolsPage() {
         }}
         onSave={handleSaveSettings}
       />
+    </div>
+  );
+}
+
+function CategoryGroup({
+  category,
+  tools,
+  onToggle,
+  onSettings,
+}: {
+  category: string;
+  tools: BuiltinToolData[];
+  onToggle: (tool: BuiltinToolData) => void;
+  onSettings: (tool: BuiltinToolData) => void;
+}) {
+  return (
+    <div className="rounded-lg border">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2">
+        <span className="text-sm font-medium">{CATEGORY_LABELS[category] ?? category}</span>
+        <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">
+          {tools.length}
+        </Badge>
+      </div>
+      <div className="divide-y">
+        {tools.map((tool) => (
+          <ToolRow key={tool.name} tool={tool} onToggle={onToggle} onSettings={onSettings} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ToolRow({
+  tool,
+  onToggle,
+  onSettings,
+}: {
+  tool: BuiltinToolData;
+  onToggle: (tool: BuiltinToolData) => void;
+  onSettings: (tool: BuiltinToolData) => void;
+}) {
+  const configHint = getConfigHint(tool);
+  const editable = hasEditableSettings(tool);
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-2 hover:bg-muted/30 transition-colors">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-medium leading-tight">{tool.display_name}</span>
+          <code className="text-[11px] text-muted-foreground">{tool.name}</code>
+          {tool.requires && tool.requires.length > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="ml-1 h-4 px-1 text-[10px] leading-none cursor-default">
+                    req
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">Requires: {tool.requires.join(", ")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        {tool.description && (
+          <p className="text-xs text-muted-foreground leading-snug truncate mt-0.5">
+            {tool.description}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1.5 shrink-0">
+        {editable && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSettings(tool)}
+            className="h-7 gap-1 px-2 text-xs"
+          >
+            <Settings className="h-3 w-3" />
+            Settings
+          </Button>
+        )}
+        {!editable && configHint && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-default">
+                  <Info className="h-3 w-3" />
+                  {configHint}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="text-xs">Configured via the Config page</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        <Switch
+          checked={tool.enabled}
+          onCheckedChange={() => onToggle(tool)}
+        />
+      </div>
     </div>
   );
 }

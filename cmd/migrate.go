@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,9 +12,11 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/spf13/cobra"
 
 	"github.com/nextlevelbuilder/goclaw/internal/config"
+	"github.com/nextlevelbuilder/goclaw/internal/upgrade"
 )
 
 var migrationsDir string
@@ -95,6 +99,22 @@ func migrateUpCmd() *cobra.Command {
 
 			v, dirty, _ := m.Version()
 			slog.Info("migration complete", "version", v, "dirty", dirty)
+
+			// Run pending data hooks after SQL migrations.
+			db, dbErr := sql.Open("pgx", dsn)
+			if dbErr != nil {
+				slog.Warn("could not connect for data hooks", "error", dbErr)
+				return nil
+			}
+			defer db.Close()
+
+			count, hookErr := upgrade.RunPendingHooks(context.Background(), db)
+			if hookErr != nil {
+				slog.Warn("data hooks failed", "error", hookErr)
+			} else if count > 0 {
+				slog.Info("data hooks applied", "count", count)
+			}
+
 			return nil
 		},
 	}

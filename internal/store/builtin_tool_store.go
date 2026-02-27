@@ -17,6 +17,7 @@ type BuiltinToolDef struct {
 	Enabled     bool            `json:"enabled"`
 	Settings    json.RawMessage `json:"settings"`
 	Requires    []string        `json:"requires,omitempty"`
+	Metadata    json.RawMessage `json:"metadata"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 }

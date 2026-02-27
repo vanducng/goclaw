@@ -9,6 +9,7 @@ export interface BuiltinToolData {
   enabled: boolean;
   settings: Record<string, unknown>;
   requires: string[];
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }

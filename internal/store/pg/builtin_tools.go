@@ -20,7 +20,7 @@ func NewPGBuiltinToolStore(db *sql.DB) *PGBuiltinToolStore {
 	return &PGBuiltinToolStore{db: db}
 }
 
-const builtinToolSelectCols = `name, display_name, description, category, enabled, settings, requires, created_at, updated_at`
+const builtinToolSelectCols = `name, display_name, description, category, enabled, settings, requires, metadata, created_at, updated_at`
 
 func (s *PGBuiltinToolStore) List(ctx context.Context) ([]store.BuiltinToolDef, error) {
 	rows, err := s.db.QueryContext(ctx,
@@ -108,13 +108,14 @@ func (s *PGBuiltinToolStore) Seed(ctx context.Context, tools []store.BuiltinTool
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO builtin_tools (name, display_name, description, category, enabled, settings, requires, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		`INSERT INTO builtin_tools (name, display_name, description, category, enabled, settings, requires, metadata, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		 ON CONFLICT (name) DO UPDATE SET
 		   display_name = EXCLUDED.display_name,
 		   description = EXCLUDED.description,
 		   category = EXCLUDED.category,
 		   requires = EXCLUDED.requires,
+		   metadata = EXCLUDED.metadata,
 		   updated_at = EXCLUDED.updated_at`)
 	if err != nil {
 		return fmt.Errorf("prepare seed stmt: %w", err)
@@ -127,9 +128,13 @@ func (s *PGBuiltinToolStore) Seed(ctx context.Context, tools []store.BuiltinTool
 		if settings == nil {
 			settings = json.RawMessage("{}")
 		}
+		metadata := t.Metadata
+		if metadata == nil {
+			metadata = json.RawMessage("{}")
+		}
 		_, err := stmt.ExecContext(ctx,
 			t.Name, t.DisplayName, t.Description, t.Category,
-			t.Enabled, []byte(settings), pqStringArray(t.Requires), now,
+			t.Enabled, []byte(settings), pqStringArray(t.Requires), []byte(metadata), now,
 		)
 		if err != nil {
 			return fmt.Errorf("seed tool %s: %w", t.Name, err)
@@ -143,10 +148,11 @@ func (s *PGBuiltinToolStore) scanTool(row *sql.Row) (*store.BuiltinToolDef, erro
 	var def store.BuiltinToolDef
 	var settings []byte
 	var requires []byte
+	var metadata []byte
 
 	err := row.Scan(
 		&def.Name, &def.DisplayName, &def.Description, &def.Category,
-		&def.Enabled, &settings, &requires, &def.CreatedAt, &def.UpdatedAt,
+		&def.Enabled, &settings, &requires, &metadata, &def.CreatedAt, &def.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -154,6 +160,9 @@ func (s *PGBuiltinToolStore) scanTool(row *sql.Row) (*store.BuiltinToolDef, erro
 
 	if settings != nil {
 		def.Settings = json.RawMessage(settings)
+	}
+	if metadata != nil {
+		def.Metadata = json.RawMessage(metadata)
 	}
 	scanStringArray(requires, &def.Requires)
 
@@ -167,16 +176,20 @@ func (s *PGBuiltinToolStore) scanTools(rows *sql.Rows) ([]store.BuiltinToolDef, 
 		var def store.BuiltinToolDef
 		var settings []byte
 		var requires []byte
+		var metadata []byte
 
 		if err := rows.Scan(
 			&def.Name, &def.DisplayName, &def.Description, &def.Category,
-			&def.Enabled, &settings, &requires, &def.CreatedAt, &def.UpdatedAt,
+			&def.Enabled, &settings, &requires, &metadata, &def.CreatedAt, &def.UpdatedAt,
 		); err != nil {
 			continue
 		}
 
 		if settings != nil {
 			def.Settings = json.RawMessage(settings)
+		}
+		if metadata != nil {
+			def.Metadata = json.RawMessage(metadata)
 		}
 		scanStringArray(requires, &def.Requires)
 
