@@ -1,5 +1,4 @@
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -9,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ContextPruningConfig } from "@/types/agent";
-import { ConfigSection, numOrUndef } from "./config-section";
+import { ConfigSection, InfoLabel, numOrUndef } from "./config-section";
 
 interface ContextPruningSectionProps {
   enabled: boolean;
@@ -28,7 +27,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
     >
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Mode</Label>
+          <InfoLabel tip="Pruning strategy. 'cache-ttl' trims old tool results based on their position in the conversation.">Mode</InfoLabel>
           <Select
             value={value.mode ?? ""}
             onValueChange={(v) =>
@@ -43,7 +42,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Keep Last Assistants</Label>
+          <InfoLabel tip="Number of recent assistant turns whose tool results are always kept intact, never pruned.">Keep Last Assistants</InfoLabel>
           <Input
             type="number"
             placeholder="3"
@@ -56,7 +55,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Soft Trim Ratio (0-1)</Label>
+          <InfoLabel tip="Context usage ratio (0-1) at which soft trimming begins. E.g. 0.3 means trimming starts when context is 30% full.">Soft Trim Ratio (0-1)</InfoLabel>
           <Input
             type="number"
             step="0.05"
@@ -66,7 +65,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
           />
         </div>
         <div className="space-y-2">
-          <Label>Hard Clear Ratio (0-1)</Label>
+          <InfoLabel tip="Context usage ratio (0-1) at which hard clearing kicks in. E.g. 0.5 means full clearing at 50% context usage.">Hard Clear Ratio (0-1)</InfoLabel>
           <Input
             type="number"
             step="0.05"
@@ -77,7 +76,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Min Prunable Tool Chars</Label>
+        <InfoLabel tip="Only tool results with at least this many characters are eligible for pruning. Shorter results are left untouched.">Min Prunable Tool Chars</InfoLabel>
         <Input
           type="number"
           placeholder="50000"
@@ -93,7 +92,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
         <h4 className="text-xs font-medium text-muted-foreground">Soft Trim</h4>
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label>Max Chars</Label>
+            <InfoLabel tip="Tool results longer than this will be soft-trimmed, keeping only head and tail portions.">Max Chars</InfoLabel>
             <Input
               type="number"
               placeholder="4000"
@@ -104,7 +103,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
             />
           </div>
           <div className="space-y-2">
-            <Label>Head Chars</Label>
+            <InfoLabel tip="Number of characters to keep from the beginning of a trimmed tool result.">Head Chars</InfoLabel>
             <Input
               type="number"
               placeholder="1500"
@@ -115,7 +114,7 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
             />
           </div>
           <div className="space-y-2">
-            <Label>Tail Chars</Label>
+            <InfoLabel tip="Number of characters to keep from the end of a trimmed tool result.">Tail Chars</InfoLabel>
             <Input
               type="number"
               placeholder="1500"
@@ -126,9 +125,6 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
             />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Tool results longer than Max Chars get trimmed, keeping Head + Tail chars.
-        </p>
       </div>
 
       {/* Hard Clear */}
@@ -141,10 +137,10 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
               onChange({ ...value, hardClear: { ...value.hardClear, enabled: v } })
             }
           />
-          <Label>Enabled</Label>
+          <InfoLabel tip="When enabled, old tool results beyond the hard clear ratio are replaced entirely with placeholder text.">Enabled</InfoLabel>
         </div>
         <div className="space-y-2">
-          <Label>Placeholder Text</Label>
+          <InfoLabel tip="Text that replaces cleared tool results. Helps the agent understand content was removed.">Placeholder Text</InfoLabel>
           <Input
             placeholder="[Old tool result content cleared]"
             value={value.hardClear?.placeholder ?? ""}
@@ -152,9 +148,6 @@ export function ContextPruningSection({ enabled, value, onToggle, onChange }: Co
               onChange({ ...value, hardClear: { ...value.hardClear, placeholder: e.target.value || undefined } })
             }
           />
-          <p className="text-xs text-muted-foreground">
-            Replacement text when old tool results are cleared entirely.
-          </p>
         </div>
       </div>
     </ConfigSection>

@@ -1,5 +1,4 @@
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -8,7 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ToolPolicyConfig } from "@/types/agent";
-import { ConfigSection, arrayToTags, tagsToArray } from "./config-section";
+import { ConfigSection, InfoLabel, arrayToTags, tagsToArray } from "./config-section";
 
 interface ToolPolicySectionProps {
   enabled: boolean;
@@ -26,7 +25,7 @@ export function ToolPolicySection({ enabled, value, onToggle, onChange }: ToolPo
       onToggle={onToggle}
     >
       <div className="space-y-2">
-        <Label>Profile</Label>
+        <InfoLabel tip="Base tool profile. 'default' includes common tools, 'strict' limits to safe tools only, 'permissive' allows all tools.">Profile</InfoLabel>
         <Select
           value={value.profile ?? ""}
           onValueChange={(v) => onChange({ ...value, profile: v || undefined })}
@@ -40,16 +39,15 @@ export function ToolPolicySection({ enabled, value, onToggle, onChange }: ToolPo
         </Select>
       </div>
       <div className="space-y-2">
-        <Label>Allow</Label>
+        <InfoLabel tip="Comma-separated allowlist. Only these tools will be available (overrides profile). Leave empty to use profile defaults.">Allow</InfoLabel>
         <Input
           placeholder="tool1, tool2, ..."
           value={arrayToTags(value.allow)}
           onChange={(e) => onChange({ ...value, allow: tagsToArray(e.target.value) })}
         />
-        <p className="text-xs text-muted-foreground">Comma-separated list of allowed tools.</p>
       </div>
       <div className="space-y-2">
-        <Label>Deny</Label>
+        <InfoLabel tip="Comma-separated denylist. These tools will be blocked even if allowed by the profile.">Deny</InfoLabel>
         <Input
           placeholder="tool1, tool2, ..."
           value={arrayToTags(value.deny)}
@@ -57,13 +55,12 @@ export function ToolPolicySection({ enabled, value, onToggle, onChange }: ToolPo
         />
       </div>
       <div className="space-y-2">
-        <Label>Also Allow</Label>
+        <InfoLabel tip="Additional tools added on top of the profile defaults. Useful for enabling optional tools like web_fetch without overriding the whole profile.">Also Allow</InfoLabel>
         <Input
           placeholder="web_fetch, web_search, ..."
           value={arrayToTags(value.alsoAllow)}
           onChange={(e) => onChange({ ...value, alsoAllow: tagsToArray(e.target.value) })}
         />
-        <p className="text-xs text-muted-foreground">Additional tools to add on top of profile defaults.</p>
       </div>
     </ConfigSection>
   );

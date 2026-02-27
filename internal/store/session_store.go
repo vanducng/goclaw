@@ -29,6 +29,11 @@ type SessionData struct {
 	Label                      string `json:"label,omitempty"`
 	SpawnedBy                  string `json:"spawnedBy,omitempty"`
 	SpawnDepth                 int    `json:"spawnDepth,omitempty"`
+
+	// Adaptive throttle: cached per-session so scheduler reads without DB lookup.
+	ContextWindow    int `json:"contextWindow,omitempty"`    // agent's context window (set on first run)
+	LastPromptTokens int `json:"lastPromptTokens,omitempty"` // actual prompt tokens from last LLM response
+	LastMessageCount int `json:"lastMessageCount,omitempty"` // message count at time of last LLM call
 }
 
 // SessionInfo is lightweight session metadata for listing.
@@ -68,6 +73,10 @@ type SessionStore interface {
 	GetMemoryFlushCompactionCount(key string) int
 	SetMemoryFlushDone(key string)
 	SetSpawnInfo(key, spawnedBy string, depth int)
+	SetContextWindow(key string, cw int)
+	GetContextWindow(key string) int
+	SetLastPromptTokens(key string, tokens, msgCount int)
+	GetLastPromptTokens(key string) (tokens, msgCount int)
 	TruncateHistory(key string, keepLast int)
 	Reset(key string)
 	Delete(key string) error

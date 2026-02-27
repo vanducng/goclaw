@@ -1,5 +1,4 @@
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -8,7 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SubagentsConfig } from "@/types/agent";
-import { ConfigSection, numOrUndef } from "./config-section";
+import { ConfigSection, InfoLabel, numOrUndef } from "./config-section";
 
 interface SubagentsSectionProps {
   enabled: boolean;
@@ -27,7 +26,7 @@ export function SubagentsSection({ enabled, value, onToggle, onChange }: Subagen
     >
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Max Concurrent</Label>
+          <InfoLabel tip="Maximum number of sub-agents that can run simultaneously for this agent.">Max Concurrent</InfoLabel>
           <Input
             type="number"
             placeholder="8"
@@ -36,7 +35,7 @@ export function SubagentsSection({ enabled, value, onToggle, onChange }: Subagen
           />
         </div>
         <div className="space-y-2">
-          <Label>Max Spawn Depth</Label>
+          <InfoLabel tip="How many levels deep sub-agents can spawn other sub-agents. Depth 1 means only the parent can spawn.">Max Spawn Depth</InfoLabel>
           <Select
             value={String(value.maxSpawnDepth ?? "")}
             onValueChange={(v) => onChange({ ...value, maxSpawnDepth: Number(v) })}
@@ -52,7 +51,7 @@ export function SubagentsSection({ enabled, value, onToggle, onChange }: Subagen
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Max Children Per Agent</Label>
+          <InfoLabel tip="Maximum number of sub-agents a single parent agent can spawn in one session.">Max Children Per Agent</InfoLabel>
           <Input
             type="number"
             placeholder="5"
@@ -61,7 +60,7 @@ export function SubagentsSection({ enabled, value, onToggle, onChange }: Subagen
           />
         </div>
         <div className="space-y-2">
-          <Label>Archive After (minutes)</Label>
+          <InfoLabel tip="Idle time in minutes before a sub-agent session is automatically archived and cleaned up.">Archive After (minutes)</InfoLabel>
           <Input
             type="number"
             placeholder="60"
@@ -71,15 +70,12 @@ export function SubagentsSection({ enabled, value, onToggle, onChange }: Subagen
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Model Override</Label>
+        <InfoLabel tip="LLM model for sub-agents. Leave empty to inherit the parent agent's model.">Model Override</InfoLabel>
         <Input
           placeholder="(inherit from agent)"
           value={value.model ?? ""}
           onChange={(e) => onChange({ ...value, model: e.target.value || undefined })}
         />
-        <p className="text-xs text-muted-foreground">
-          LLM model for sub-agents. Leave empty to inherit the parent agent's model.
-        </p>
       </div>
     </ConfigSection>
   );

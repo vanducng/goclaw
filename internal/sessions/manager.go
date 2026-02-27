@@ -32,6 +32,10 @@ type Session struct {
 	Label                      string `json:"label,omitempty"`
 	SpawnedBy       string `json:"spawnedBy,omitempty"`
 	SpawnDepth      int    `json:"spawnDepth,omitempty"`
+
+	ContextWindow    int `json:"contextWindow,omitempty"`
+	LastPromptTokens int `json:"lastPromptTokens,omitempty"`
+	LastMessageCount int `json:"lastMessageCount,omitempty"`
 }
 
 // Manager handles session lifecycle, persistence, and lookup.
@@ -217,6 +221,45 @@ func (m *Manager) SetSpawnInfo(key, spawnedBy string, depth int) {
 	}
 }
 
+// SetContextWindow caches the agent's context window on the session.
+func (m *Manager) SetContextWindow(key string, cw int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[key]; ok {
+		s.ContextWindow = cw
+	}
+}
+
+// GetContextWindow returns the cached context window for a session (0 if unset).
+func (m *Manager) GetContextWindow(key string) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sessions[key]; ok {
+		return s.ContextWindow
+	}
+	return 0
+}
+
+// SetLastPromptTokens records actual prompt tokens from the last LLM response.
+func (m *Manager) SetLastPromptTokens(key string, tokens, msgCount int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[key]; ok {
+		s.LastPromptTokens = tokens
+		s.LastMessageCount = msgCount
+	}
+}
+
+// GetLastPromptTokens returns the last known prompt tokens and message count.
+func (m *Manager) GetLastPromptTokens(key string) (int, int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sessions[key]; ok {
+		return s.LastPromptTokens, s.LastMessageCount
+	}
+	return 0, 0
+}
+
 // TruncateHistory keeps only the last N messages.
 func (m *Manager) TruncateHistory(key string, keepLast int) {
 	m.mu.Lock()
@@ -364,6 +407,9 @@ func (m *Manager) Save(key string) error {
 		Label:           s.Label,
 		SpawnedBy:       s.SpawnedBy,
 		SpawnDepth:      s.SpawnDepth,
+		ContextWindow:    s.ContextWindow,
+		LastPromptTokens: s.LastPromptTokens,
+		LastMessageCount: s.LastMessageCount,
 	}
 	if len(s.Messages) > 0 {
 		snapshot.Messages = make([]providers.Message, len(s.Messages))

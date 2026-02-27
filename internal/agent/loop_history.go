@@ -263,10 +263,23 @@ func sanitizeHistory(msgs []providers.Message) []providers.Message {
 
 func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {
 	history := l.sessions.GetHistory(sessionKey)
-	tokenEstimate := EstimateTokens(history)
-	threshold := l.contextWindow * 75 / 100
 
-	if len(history) <= 50 && tokenEstimate <= threshold {
+	// Use calibrated token estimation when available.
+	lastPT, lastMC := l.sessions.GetLastPromptTokens(sessionKey)
+	tokenEstimate := EstimateTokensWithCalibration(history, lastPT, lastMC)
+
+	// Resolve compaction thresholds from config with sensible defaults.
+	historyShare := 0.75
+	if l.compactionCfg != nil && l.compactionCfg.MaxHistoryShare > 0 {
+		historyShare = l.compactionCfg.MaxHistoryShare
+	}
+	minMessages := 50
+	if l.compactionCfg != nil && l.compactionCfg.MinMessages > 0 {
+		minMessages = l.compactionCfg.MinMessages
+	}
+
+	threshold := int(float64(l.contextWindow) * historyShare)
+	if len(history) <= minMessages && tokenEstimate <= threshold {
 		return
 	}
 
@@ -287,6 +300,12 @@ func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {
 		l.runMemoryFlush(ctx, sessionKey, flushSettings)
 	}
 
+	// Resolve keepLast before spawning goroutine (reads config under caller's scope).
+	keepLast := 4
+	if l.compactionCfg != nil && l.compactionCfg.KeepLastMessages > 0 {
+		keepLast = l.compactionCfg.KeepLastMessages
+	}
+
 	// Summarize in background (holds the per-session lock until done)
 	go func() {
 		defer sessionMu.Unlock()
@@ -294,7 +313,7 @@ func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {
 		// Re-check: history may have been truncated by a concurrent summarize
 		// that finished between our threshold check and acquiring the lock.
 		history := l.sessions.GetHistory(sessionKey)
-		if len(history) <= 4 {
+		if len(history) <= keepLast {
 			return
 		}
 
@@ -302,7 +321,7 @@ func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {
 		defer cancel()
 
 		summary := l.sessions.GetSummary(sessionKey)
-		toSummarize := history[:len(history)-4]
+		toSummarize := history[:len(history)-keepLast]
 
 		var sb string
 		for _, m := range toSummarize {
@@ -330,7 +349,7 @@ func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {
 		}
 
 		l.sessions.SetSummary(sessionKey, SanitizeAssistantContent(resp.Content))
-		l.sessions.TruncateHistory(sessionKey, 4)
+		l.sessions.TruncateHistory(sessionKey, keepLast)
 		l.sessions.IncrementCompaction(sessionKey)
 		l.sessions.Save(sessionKey)
 	}()

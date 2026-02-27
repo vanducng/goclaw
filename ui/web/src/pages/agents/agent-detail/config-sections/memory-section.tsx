@@ -1,8 +1,7 @@
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { MemoryConfig } from "@/types/agent";
-import { ConfigSection, numOrUndef } from "./config-section";
+import { ConfigSection, InfoLabel, numOrUndef } from "./config-section";
 
 interface MemorySectionProps {
   enabled: boolean;
@@ -24,11 +23,11 @@ export function MemorySection({ enabled, value, onToggle, onChange }: MemorySect
           checked={value.enabled ?? true}
           onCheckedChange={(v) => onChange({ ...value, enabled: v })}
         />
-        <Label>Enabled</Label>
+        <InfoLabel tip="Enable or disable the memory system for this agent. When enabled, the agent can store and recall information across sessions.">Enabled</InfoLabel>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Embedding Provider</Label>
+          <InfoLabel tip="LLM provider used for generating text embeddings. Leave empty to auto-detect from the agent's main provider.">Embedding Provider</InfoLabel>
           <Input
             placeholder="(auto)"
             value={value.embedding_provider ?? ""}
@@ -36,7 +35,7 @@ export function MemorySection({ enabled, value, onToggle, onChange }: MemorySect
           />
         </div>
         <div className="space-y-2">
-          <Label>Embedding Model</Label>
+          <InfoLabel tip="Embedding model name. Must be supported by the embedding provider (e.g. text-embedding-3-small for OpenAI).">Embedding Model</InfoLabel>
           <Input
             placeholder="text-embedding-3-small"
             value={value.embedding_model ?? ""}
@@ -46,7 +45,7 @@ export function MemorySection({ enabled, value, onToggle, onChange }: MemorySect
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Max Results</Label>
+          <InfoLabel tip="Maximum number of memory entries returned per search query.">Max Results</InfoLabel>
           <Input
             type="number"
             placeholder="6"
@@ -55,7 +54,7 @@ export function MemorySection({ enabled, value, onToggle, onChange }: MemorySect
           />
         </div>
         <div className="space-y-2">
-          <Label>Max Chunk Length</Label>
+          <InfoLabel tip="Maximum character length for each memory chunk. Longer content is split into smaller chunks before storing.">Max Chunk Length</InfoLabel>
           <Input
             type="number"
             placeholder="1000"
@@ -66,7 +65,7 @@ export function MemorySection({ enabled, value, onToggle, onChange }: MemorySect
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Vector Weight</Label>
+          <InfoLabel tip="Weight for vector (semantic) similarity in hybrid search scoring. Higher values prioritize meaning over keywords.">Vector Weight</InfoLabel>
           <Input
             type="number"
             step="0.1"
@@ -76,7 +75,7 @@ export function MemorySection({ enabled, value, onToggle, onChange }: MemorySect
           />
         </div>
         <div className="space-y-2">
-          <Label>Text Weight</Label>
+          <InfoLabel tip="Weight for text (keyword/BM25) similarity in hybrid search scoring. Higher values prioritize exact keyword matches.">Text Weight</InfoLabel>
           <Input
             type="number"
             step="0.1"

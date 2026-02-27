@@ -210,6 +210,41 @@ func (s *PGSessionStore) SetSpawnInfo(key, spawnedBy string, depth int) {
 	}
 }
 
+func (s *PGSessionStore) SetContextWindow(key string, cw int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if data, ok := s.cache[key]; ok {
+		data.ContextWindow = cw
+	}
+}
+
+func (s *PGSessionStore) GetContextWindow(key string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if data, ok := s.cache[key]; ok {
+		return data.ContextWindow
+	}
+	return 0
+}
+
+func (s *PGSessionStore) SetLastPromptTokens(key string, tokens, msgCount int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if data, ok := s.cache[key]; ok {
+		data.LastPromptTokens = tokens
+		data.LastMessageCount = msgCount
+	}
+}
+
+func (s *PGSessionStore) GetLastPromptTokens(key string) (int, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if data, ok := s.cache[key]; ok {
+		return data.LastPromptTokens, data.LastMessageCount
+	}
+	return 0, 0
+}
+
 func (s *PGSessionStore) TruncateHistory(key string, keepLast int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

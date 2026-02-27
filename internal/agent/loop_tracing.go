@@ -246,3 +246,27 @@ func EstimateTokens(messages []providers.Message) int {
 	}
 	return total
 }
+
+// EstimateTokensWithCalibration uses actual prompt tokens from the last LLM
+// response as a calibration base, then estimates only new messages on top.
+// Falls back to EstimateTokens() when no calibration data is available.
+func EstimateTokensWithCalibration(messages []providers.Message, lastPromptTokens, lastMsgCount int) int {
+	if lastPromptTokens <= 0 || lastMsgCount <= 0 {
+		return EstimateTokens(messages)
+	}
+
+	currentCount := len(messages)
+	newMsgs := currentCount - lastMsgCount
+	if newMsgs <= 0 {
+		// No new messages since last calibration (or history was truncated).
+		// Use calibration value as-is; it's the best estimate we have.
+		return lastPromptTokens
+	}
+
+	// Estimate only the new messages with the heuristic and add to base.
+	delta := 0
+	for _, m := range messages[lastMsgCount:] {
+		delta += utf8.RuneCountInString(m.Content) / 3
+	}
+	return lastPromptTokens + delta
+}

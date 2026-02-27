@@ -822,10 +822,17 @@ func runGateway() {
 
 	// Adaptive throttle: reduce per-session concurrency when nearing the summary threshold.
 	// This prevents concurrent runs from racing with summarization.
+	// Uses calibrated token estimation (actual prompt tokens from last LLM call)
+	// and the agent's real context window (cached on session by the Loop).
 	sched.SetTokenEstimateFunc(func(sessionKey string) (int, int) {
 		history := sessStore.GetHistory(sessionKey)
-		tokens := agent.EstimateTokens(history)
-		return tokens, 200000 // default context window
+		lastPT, lastMC := sessStore.GetLastPromptTokens(sessionKey)
+		tokens := agent.EstimateTokensWithCalibration(history, lastPT, lastMC)
+		cw := sessStore.GetContextWindow(sessionKey)
+		if cw <= 0 {
+			cw = 200000 // fallback for sessions not yet processed
+		}
+		return tokens, cw
 	})
 
 	// Subscribe to agent events for channel streaming/reaction forwarding.

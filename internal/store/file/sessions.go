@@ -74,6 +74,22 @@ func (f *FileSessionStore) SetSpawnInfo(key, spawnedBy string, depth int) {
 	f.mgr.SetSpawnInfo(key, spawnedBy, depth)
 }
 
+func (f *FileSessionStore) SetContextWindow(key string, cw int) {
+	f.mgr.SetContextWindow(key, cw)
+}
+
+func (f *FileSessionStore) GetContextWindow(key string) int {
+	return f.mgr.GetContextWindow(key)
+}
+
+func (f *FileSessionStore) SetLastPromptTokens(key string, tokens, msgCount int) {
+	f.mgr.SetLastPromptTokens(key, tokens, msgCount)
+}
+
+func (f *FileSessionStore) GetLastPromptTokens(key string) (int, int) {
+	return f.mgr.GetLastPromptTokens(key)
+}
+
 func (f *FileSessionStore) TruncateHistory(key string, keepLast int) {
 	f.mgr.TruncateHistory(key, keepLast)
 }
@@ -154,5 +170,8 @@ func sessionToData(s *sessions.Session) *store.SessionData {
 		Label:                      s.Label,
 		SpawnedBy:                  s.SpawnedBy,
 		SpawnDepth:                 s.SpawnDepth,
+		ContextWindow:             s.ContextWindow,
+		LastPromptTokens:          s.LastPromptTokens,
+		LastMessageCount:          s.LastMessageCount,
 	}
 }

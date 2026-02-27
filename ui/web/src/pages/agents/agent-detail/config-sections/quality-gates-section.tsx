@@ -1,7 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -11,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { QualityGateConfig } from "@/types/agent";
-import { ConfigSection, numOrUndef } from "./config-section";
+import { ConfigSection, InfoLabel, numOrUndef } from "./config-section";
 
 interface QualityGatesSectionProps {
   enabled: boolean;
@@ -70,7 +69,7 @@ export function QualityGatesSection({ enabled, value, onToggle, onChange }: Qual
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Type</Label>
+                <InfoLabel tip="Validation method. 'Agent' delegates to a reviewer agent, 'Command' runs a shell command and checks exit code.">Type</InfoLabel>
                 <Select
                   value={gate.type}
                   onValueChange={(v) => updateGate(i, {
@@ -89,7 +88,7 @@ export function QualityGatesSection({ enabled, value, onToggle, onChange }: Qual
               <div className="space-y-2">
                 {gate.type === "agent" ? (
                   <>
-                    <Label>Reviewer Agent Key</Label>
+                    <InfoLabel tip="Key of the agent used to review and validate the delegation output.">Reviewer Agent Key</InfoLabel>
                     <Input
                       placeholder="qa-reviewer"
                       value={gate.agent ?? ""}
@@ -98,7 +97,7 @@ export function QualityGatesSection({ enabled, value, onToggle, onChange }: Qual
                   </>
                 ) : (
                   <>
-                    <Label>Command</Label>
+                    <InfoLabel tip="Shell command to run for validation. Exit code 0 = pass, non-zero = fail.">Command</InfoLabel>
                     <Input
                       placeholder="npm test"
                       value={gate.command ?? ""}
@@ -114,11 +113,11 @@ export function QualityGatesSection({ enabled, value, onToggle, onChange }: Qual
                   checked={gate.block_on_failure}
                   onCheckedChange={(v) => updateGate(i, { block_on_failure: v })}
                 />
-                <Label className="text-sm">Block on Failure</Label>
+                <InfoLabel tip="When enabled, a failed gate prevents the result from being returned to the caller and triggers retries.">Block on Failure</InfoLabel>
               </div>
               {gate.block_on_failure && (
                 <div className="space-y-2">
-                  <Label>Max Retries</Label>
+                  <InfoLabel tip="Number of times to retry the delegation if the quality gate fails.">Max Retries</InfoLabel>
                   <Input
                     type="number"
                     placeholder="2"
@@ -130,7 +129,7 @@ export function QualityGatesSection({ enabled, value, onToggle, onChange }: Qual
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Timeout (seconds)</Label>
+                <InfoLabel tip="Maximum time in seconds to wait for the quality gate check to complete before timing out.">Timeout (seconds)</InfoLabel>
                 <Input
                   type="number"
                   placeholder="120"

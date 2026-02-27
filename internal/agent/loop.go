@@ -451,6 +451,12 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		)
 	}
 
+	// 0. Cache agent's context window on the session (first run only).
+	// Enables scheduler's adaptive throttle to use the real value instead of hardcoded 200K.
+	if l.sessions.GetContextWindow(req.SessionKey) <= 0 {
+		l.sessions.SetContextWindow(req.SessionKey, l.contextWindow)
+	}
+
 	// 1. Build messages from session history
 	history := l.sessions.GetHistory(req.SessionKey)
 	summary := l.sessions.GetSummary(req.SessionKey)
@@ -757,6 +763,15 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	// Write session metadata (matching TS session entry updates)
 	l.sessions.UpdateMetadata(req.SessionKey, l.model, l.provider.Name(), req.Channel)
 	l.sessions.AccumulateTokens(req.SessionKey, int64(totalUsage.PromptTokens), int64(totalUsage.CompletionTokens))
+
+	// Calibrate token estimation: store actual prompt tokens + message count.
+	// Next time EstimateTokensWithCalibration() is called, it uses this as a base
+	// instead of the chars/3 heuristic (more accurate for multilingual content).
+	if totalUsage.PromptTokens > 0 {
+		msgCount := len(history) + len(pendingMsgs)
+		l.sessions.SetLastPromptTokens(req.SessionKey, totalUsage.PromptTokens, msgCount)
+	}
+
 	l.sessions.Save(req.SessionKey)
 
 	// Bootstrap auto-cleanup: after enough conversation turns, remove BOOTSTRAP.md
