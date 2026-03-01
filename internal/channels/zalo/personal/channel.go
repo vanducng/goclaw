@@ -275,6 +275,8 @@ func (c *Channel) handleDM(msg protocol.UserMessage) {
 		"preview", channels.Truncate(content, 50),
 	)
 
+	c.startTyping(threadID, protocol.ThreadTypeUser)
+
 	metadata := map[string]string{
 		"message_id": msg.Data.MsgID,
 		"platform":   "zalo_personal",
@@ -300,12 +302,32 @@ func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 		"preview", channels.Truncate(content, 50),
 	)
 
+	c.startTyping(threadID, protocol.ThreadTypeGroup)
+
 	metadata := map[string]string{
 		"message_id": msg.Data.MsgID,
 		"platform":   "zalo_personal",
 		"group_id":   threadID,
 	}
 	c.HandleMessage(senderID, threadID, content, nil, metadata, "group")
+}
+
+// startTyping starts a typing indicator with keepalive for the given thread.
+// Zalo typing expires after ~5s, so keepalive fires every 3s.
+func (c *Channel) startTyping(threadID string, threadType protocol.ThreadType) {
+	sess := c.sess // snapshot to avoid stale-session reads if restart() replaces c.sess
+	ctrl := typing.New(typing.Options{
+		MaxDuration:       60 * time.Second,
+		KeepaliveInterval: 4 * time.Second,
+		StartFn: func() error {
+			return protocol.SendTypingEvent(context.Background(), sess, threadID, threadType)
+		},
+	})
+	if prev, ok := c.typingCtrls.Load(threadID); ok {
+		prev.(*typing.Controller).Stop()
+	}
+	c.typingCtrls.Store(threadID, ctrl)
+	ctrl.Start()
 }
 
 func (c *Channel) sendChunkedText(ctx context.Context, chatID string, threadType protocol.ThreadType, text string) error {
