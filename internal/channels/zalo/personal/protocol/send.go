@@ -92,6 +92,58 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 	return result.MsgID.String(), nil
 }
 
+// SendTypingEvent sends a typing indicator to a user or group.
+// Zalo typing lasts ~5s server-side; callers should re-send every 3-4s.
+func SendTypingEvent(ctx context.Context, sess *Session, threadID string, threadType ThreadType) error {
+	serviceKey := "chat"
+	apiPath := "/api/message/typing"
+	if threadType == ThreadTypeGroup {
+		serviceKey = "group"
+		apiPath = "/api/group/typing"
+	}
+
+	baseURL := getServiceURL(sess, serviceKey)
+	if baseURL == "" {
+		return fmt.Errorf("zalo_personal: no service URL for %s", serviceKey)
+	}
+
+	payload := map[string]any{"imei": sess.IMEI}
+	if threadType == ThreadTypeGroup {
+		payload["grid"] = threadID
+	} else {
+		payload["toid"] = threadID
+		payload["destType"] = 3 // DestTypeUser
+	}
+
+	encData, err := encryptPayload(sess, payload)
+	if err != nil {
+		return fmt.Errorf("zalo_personal: encrypt typing payload: %w", err)
+	}
+
+	typingURL := makeURL(sess, baseURL+apiPath, nil, true)
+	form := buildFormBody(map[string]string{"params": encData})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, typingURL, form)
+	if err != nil {
+		return err
+	}
+	setDefaultHeaders(req, sess)
+
+	resp, err := sess.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("zalo_personal: send typing: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var envelope Response[any]
+	if err := readJSON(resp, &envelope); err != nil {
+		return fmt.Errorf("zalo_personal: parse typing response: %w", err)
+	}
+	if envelope.ErrorCode != 0 {
+		return fmt.Errorf("zalo_personal: typing error code %d", envelope.ErrorCode)
+	}
+	return nil
+}
+
 // getServiceURL extracts a service base URL from LoginInfo.
 func getServiceURL(sess *Session, service string) string {
 	if sess.LoginInfo == nil {

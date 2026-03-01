@@ -10,6 +10,7 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
+	"github.com/nextlevelbuilder/goclaw/internal/channels/typing"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/zalo/personal/protocol"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -29,6 +30,7 @@ type Channel struct {
 	config          config.ZaloPersonalConfig
 	pairingService  store.PairingStore
 	pairingDebounce sync.Map // senderID -> time.Time
+	typingCtrls     sync.Map // threadID → *typing.Controller
 
 	sess     *protocol.Session
 	listener *protocol.Listener
@@ -105,6 +107,11 @@ func (c *Channel) Start(ctx context.Context) error {
 func (c *Channel) Stop(_ context.Context) error {
 	slog.Info("stopping zca channel")
 	c.stopOnce.Do(func() { close(c.stopCh) })
+	c.typingCtrls.Range(func(key, val any) bool {
+		val.(*typing.Controller).Stop()
+		c.typingCtrls.Delete(key)
+		return true
+	})
 	if c.listener != nil {
 		c.listener.Stop()
 	}
@@ -116,6 +123,11 @@ func (c *Channel) Stop(_ context.Context) error {
 func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	if !c.IsRunning() || c.sess == nil {
 		return fmt.Errorf("zca channel not running")
+	}
+
+	// Stop typing indicator before sending response
+	if ctrl, ok := c.typingCtrls.LoadAndDelete(msg.ChatID); ok {
+		ctrl.(*typing.Controller).Stop()
 	}
 
 	threadType := protocol.ThreadTypeUser

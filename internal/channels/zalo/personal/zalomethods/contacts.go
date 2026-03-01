@@ -1,4 +1,4 @@
-package methods
+package zalomethods
 
 import (
 	"context"
@@ -16,21 +16,21 @@ import (
 	goclawprotocol "github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
-// ZaloPersonalContactsMethods handles fetching Zalo friends/groups for the picker UI.
-type ZaloPersonalContactsMethods struct {
+// ContactsMethods handles fetching Zalo friends/groups for the picker UI.
+type ContactsMethods struct {
 	instanceStore store.ChannelInstanceStore
 	activeFetches sync.Map // instanceID string -> struct{}
 }
 
-func NewZaloPersonalContactsMethods(s store.ChannelInstanceStore) *ZaloPersonalContactsMethods {
-	return &ZaloPersonalContactsMethods{instanceStore: s}
+func NewContactsMethods(s store.ChannelInstanceStore) *ContactsMethods {
+	return &ContactsMethods{instanceStore: s}
 }
 
-func (m *ZaloPersonalContactsMethods) Register(router *gateway.MethodRouter) {
+func (m *ContactsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(goclawprotocol.MethodZaloPersonalContacts, m.handleContacts)
 }
 
-func (m *ZaloPersonalContactsMethods) handleContacts(ctx context.Context, client *gateway.Client, req *goclawprotocol.RequestFrame) {
+func (m *ContactsMethods) handleContacts(ctx context.Context, client *gateway.Client, req *goclawprotocol.RequestFrame) {
 	var params struct {
 		InstanceID string `json:"instance_id"`
 	}

@@ -1,4 +1,4 @@
-package methods
+package zalomethods
 
 import (
 	"context"
@@ -17,22 +17,22 @@ import (
 	goclawprotocol "github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
-// ZaloPersonalQRMethods handles QR login for zalo_personal channel instances.
-type ZaloPersonalQRMethods struct {
+// QRMethods handles QR login for zalo_personal channel instances.
+type QRMethods struct {
 	instanceStore  store.ChannelInstanceStore
 	msgBus         *bus.MessageBus
 	activeSessions sync.Map // instanceID (string) -> struct{}
 }
 
-func NewZaloPersonalQRMethods(s store.ChannelInstanceStore, msgBus *bus.MessageBus) *ZaloPersonalQRMethods {
-	return &ZaloPersonalQRMethods{instanceStore: s, msgBus: msgBus}
+func NewQRMethods(s store.ChannelInstanceStore, msgBus *bus.MessageBus) *QRMethods {
+	return &QRMethods{instanceStore: s, msgBus: msgBus}
 }
 
-func (m *ZaloPersonalQRMethods) Register(router *gateway.MethodRouter) {
+func (m *QRMethods) Register(router *gateway.MethodRouter) {
 	router.Register(goclawprotocol.MethodZaloPersonalQRStart, m.handleQRStart)
 }
 
-func (m *ZaloPersonalQRMethods) handleQRStart(ctx context.Context, client *gateway.Client, req *goclawprotocol.RequestFrame) {
+func (m *QRMethods) handleQRStart(ctx context.Context, client *gateway.Client, req *goclawprotocol.RequestFrame) {
 	var params struct {
 		InstanceID string `json:"instance_id"`
 	}
@@ -63,7 +63,7 @@ func (m *ZaloPersonalQRMethods) handleQRStart(ctx context.Context, client *gatew
 	go m.runQRFlow(ctx, client, params.InstanceID, instID)
 }
 
-func (m *ZaloPersonalQRMethods) runQRFlow(ctx context.Context, client *gateway.Client, instanceIDStr string, instanceID uuid.UUID) {
+func (m *QRMethods) runQRFlow(ctx context.Context, client *gateway.Client, instanceIDStr string, instanceID uuid.UUID) {
 	defer m.activeSessions.Delete(instanceIDStr)
 
 	sess := protocol.NewSession()
