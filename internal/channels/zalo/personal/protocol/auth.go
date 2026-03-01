@@ -127,11 +127,8 @@ func LoginQR(ctx context.Context, sess *Session, qrCallback func(qrPNG []byte)) 
 		Language:  &lang,
 	}
 
-	// Complete login with credentials to get full session state
-	if err := LoginWithCredentials(ctx, sess, *cred); err != nil {
-		return nil, fmt.Errorf("zca: finalize qr login: %w", err)
-	}
-
+	// Credentials are validated when the channel starts via LoginWithCredentials.
+	// Calling it here would conflict with the active QR session state.
 	return cred, nil
 }
 

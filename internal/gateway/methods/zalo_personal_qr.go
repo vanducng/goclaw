@@ -84,7 +84,7 @@ func (m *ZaloPersonalQRMethods) runQRFlow(ctx context.Context, client *gateway.C
 	})
 
 	if err != nil {
-		slog.Warn("zca QR login failed", "instance", instanceIDStr, "error", err)
+		slog.Warn("Zalo Personal QR login failed", "instance", instanceIDStr, "error", err)
 		client.SendEvent(*goclawprotocol.NewEvent(goclawprotocol.EventZaloPersonalQRDone, map[string]any{
 			"instance_id": instanceIDStr,
 			"success":     false,
@@ -100,7 +100,7 @@ func (m *ZaloPersonalQRMethods) runQRFlow(ctx context.Context, client *gateway.C
 		"language":  cred.Language,
 	})
 	if err != nil {
-		slog.Error("zca QR: marshal credentials failed", "error", err)
+		slog.Error("Zalo Personal QR: marshal credentials failed", "error", err)
 		client.SendEvent(*goclawprotocol.NewEvent(goclawprotocol.EventZaloPersonalQRDone, map[string]any{
 			"instance_id": instanceIDStr,
 			"success":     false,
@@ -112,7 +112,7 @@ func (m *ZaloPersonalQRMethods) runQRFlow(ctx context.Context, client *gateway.C
 	if err := m.instanceStore.Update(context.Background(), instanceID, map[string]any{
 		"credentials": string(credsJSON),
 	}); err != nil {
-		slog.Error("zca QR: save credentials failed", "instance", instanceIDStr, "error", err)
+		slog.Error("Zalo Personal QR: save credentials failed", "instance", instanceIDStr, "error", err)
 		client.SendEvent(*goclawprotocol.NewEvent(goclawprotocol.EventZaloPersonalQRDone, map[string]any{
 			"instance_id": instanceIDStr,
 			"success":     false,
@@ -134,5 +134,5 @@ func (m *ZaloPersonalQRMethods) runQRFlow(ctx context.Context, client *gateway.C
 		"success":     true,
 	}))
 
-	slog.Info("zca QR login completed, credentials saved", "instance", instanceIDStr)
+	slog.Info("Zalo Personal QR login completed, credentials saved", "instance", instanceIDStr)
 }
