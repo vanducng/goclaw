@@ -65,20 +65,31 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		ErrorCode int `json:"error_code"`
-		Data      struct {
-			MsgID json.Number `json:"msgId"` // can be string or number
-		} `json:"data"`
-	}
-	if err := readJSON(resp, &result); err != nil {
+	// Send response is encrypted: {"error_code":0, "data":"<encrypted>"}
+	var envelope Response[*string]
+	if err := readJSON(resp, &envelope); err != nil {
 		return "", fmt.Errorf("zalo_personal: parse send response: %w", err)
 	}
-	if result.ErrorCode != 0 {
-		return "", fmt.Errorf("zalo_personal: send error code %d", result.ErrorCode)
+	if envelope.ErrorCode != 0 {
+		return "", fmt.Errorf("zalo_personal: send error code %d", envelope.ErrorCode)
+	}
+	if envelope.Data == nil {
+		return "", nil
 	}
 
-	return result.Data.MsgID.String(), nil
+	plain, err := decryptDataField(sess, *envelope.Data)
+	if err != nil {
+		return "", fmt.Errorf("zalo_personal: decrypt send response: %w", err)
+	}
+
+	var result struct {
+		MsgID json.Number `json:"msgId"`
+	}
+	if err := json.Unmarshal(plain, &result); err != nil {
+		return "", fmt.Errorf("zalo_personal: parse send result: %w", err)
+	}
+
+	return result.MsgID.String(), nil
 }
 
 // getServiceURL extracts a service base URL from LoginInfo.
