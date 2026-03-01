@@ -166,7 +166,7 @@ func (ln *Listener) run(ctx context.Context) {
 			// it was the per-read timeout that expired.
 			if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
 				ci = CloseInfo{Code: 1006, Reason: "read timeout (silent disconnect)"}
-				slog.Warn("zca silent disconnect detected")
+				slog.Warn("zalo_personal silent disconnect detected")
 			}
 			ln.handleDisconnect(ctx, ci)
 			return

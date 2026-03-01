@@ -252,7 +252,7 @@ func (ln *Listener) resetRetryCounters() {
 		st.count = 0
 	}
 	ln.rotateCount = 0
-	slog.Debug("zca retry counters reset after stable connection")
+	slog.Debug("zalo_personal retry counters reset after stable connection")
 }
 
 func (ln *Listener) canRetry(code int) (int, bool) {

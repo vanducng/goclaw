@@ -3,7 +3,11 @@ package personal
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +28,7 @@ const (
 )
 
 // Channel connects to Zalo Personal Chat via the internal protocol port (from zcago, MIT).
-// WARNING: This is an unofficial, reverse-engineered integration. Account may be locked/banned.
+// WARNING: Zalo Personal is an unofficial, reverse-engineered integration. Account may be locked/banned.
 type Channel struct {
 	*channels.BaseChannel
 	config          config.ZaloPersonalConfig
@@ -43,7 +47,7 @@ type Channel struct {
 	stopOnce       sync.Once
 }
 
-// New creates a new ZCA channel from config.
+// New creates a new Zalo Personal channel from config.
 func New(cfg config.ZaloPersonalConfig, msgBus *bus.MessageBus, pairingSvc store.PairingStore) (*Channel, error) {
 	base := channels.NewBaseChannel("zalo_personal", msgBus, cfg.AllowFrom)
 
@@ -75,37 +79,37 @@ func New(cfg config.ZaloPersonalConfig, msgBus *bus.MessageBus, pairingSvc store
 func (c *Channel) Start(ctx context.Context) error {
 	slog.Warn("security.unofficial_api",
 		"channel", "zalo_personal",
-		"msg", "ZCA is unofficial and reverse-engineered. Account may be locked/banned. Use at own risk.",
+		"msg", "Zalo Personal is unofficial and reverse-engineered. Account may be locked/banned. Use at own risk.",
 	)
 
 	sess, err := c.authenticate(ctx)
 	if err != nil {
-		return fmt.Errorf("zca auth: %w", err)
+		return fmt.Errorf("zalo_personal auth: %w", err)
 	}
 	c.sess = sess
 
-	slog.Info("zca connected", "uid", sess.UID)
+	slog.Info("zalo_personal connected", "uid", sess.UID)
 
 	ln, err := protocol.NewListener(sess)
 	if err != nil {
-		return fmt.Errorf("zca listener: %w", err)
+		return fmt.Errorf("zalo_personal listener: %w", err)
 	}
 	c.listener = ln
 
 	if err := ln.Start(ctx); err != nil {
-		return fmt.Errorf("zca listener start: %w", err)
+		return fmt.Errorf("zalo_personal listener start: %w", err)
 	}
 
 	c.SetRunning(true)
 	go c.listenLoop(ctx)
 
-	slog.Info("zca listener loop started")
+	slog.Info("zalo_personal listener loop started")
 	return nil
 }
 
-// Stop gracefully shuts down the ZCA channel.
+// Stop gracefully shuts down the Zalo Personal channel.
 func (c *Channel) Stop(_ context.Context) error {
-	slog.Info("stopping zca channel")
+	slog.Info("stopping zalo_personal channel")
 	c.stopOnce.Do(func() { close(c.stopCh) })
 	c.typingCtrls.Range(func(key, val any) bool {
 		val.(*typing.Controller).Stop()
@@ -122,7 +126,7 @@ func (c *Channel) Stop(_ context.Context) error {
 // Send delivers an outbound message to a Zalo chat.
 func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	if !c.IsRunning() || c.sess == nil {
-		return fmt.Errorf("zca channel not running")
+		return fmt.Errorf("zalo_personal channel not running")
 	}
 
 	// Stop typing indicator before sending response
@@ -156,10 +160,10 @@ func (c *Channel) runListenerLoop(ctx context.Context) bool {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("zca listener loop stopped (context)")
+			slog.Info("zalo_personal listener loop stopped (context)")
 			return false
 		case <-c.stopCh:
-			slog.Info("zca listener loop stopped")
+			slog.Info("zalo_personal listener loop stopped")
 			return false
 
 		case msg, ok := <-c.listener.Messages():
@@ -169,14 +173,14 @@ func (c *Channel) runListenerLoop(ctx context.Context) bool {
 			c.handleMessage(msg)
 
 		case ci := <-c.listener.Disconnected():
-			slog.Warn("zca disconnected", "code", ci.Code, "reason", ci.Reason)
+			slog.Warn("zalo_personal disconnected", "code", ci.Code, "reason", ci.Reason)
 
 		case ci := <-c.listener.Closed():
-			slog.Warn("zca connection closed", "code", ci.Code, "reason", ci.Reason)
+			slog.Warn("zalo_personal connection closed", "code", ci.Code, "reason", ci.Reason)
 
 			// Code 3000: wait 60s before retry (duplicate session may be transient)
 			if ci.Code == protocol.CloseCodeDuplicate {
-				slog.Warn("zca duplicate session (code 3000), waiting before retry", "channel", c.Name())
+				slog.Warn("zalo_personal duplicate session (code 3000), waiting before retry", "channel", c.Name())
 				select {
 				case <-ctx.Done():
 					return false
@@ -189,7 +193,7 @@ func (c *Channel) runListenerLoop(ctx context.Context) bool {
 			return c.restartWithBackoff(ctx)
 
 		case err := <-c.listener.Errors():
-			slog.Warn("zca listener error", "error", err)
+			slog.Warn("zalo_personal listener error", "error", err)
 		}
 	}
 }
@@ -199,7 +203,7 @@ func (c *Channel) runListenerLoop(ctx context.Context) bool {
 func (c *Channel) restartWithBackoff(ctx context.Context) bool {
 	for attempt := range maxChannelRestarts {
 		delay := min(time.Duration(1<<uint(attempt+1))*time.Second, maxChannelBackoff)
-		slog.Info("zca restarting channel", "attempt", attempt+1, "delay", delay, "channel", c.Name())
+		slog.Info("zalo_personal restarting channel", "attempt", attempt+1, "delay", delay, "channel", c.Name())
 
 		select {
 		case <-ctx.Done():
@@ -210,12 +214,12 @@ func (c *Channel) restartWithBackoff(ctx context.Context) bool {
 		}
 
 		if err := c.restart(ctx); err != nil {
-			slog.Warn("zca restart failed", "attempt", attempt+1, "error", err)
+			slog.Warn("zalo_personal restart failed", "attempt", attempt+1, "error", err)
 			continue
 		}
 		return true
 	}
-	slog.Error("zca channel gave up after max restart attempts", "channel", c.Name())
+	slog.Error("zalo_personal channel gave up after max restart attempts", "channel", c.Name())
 	return false
 }
 
@@ -260,7 +264,8 @@ func (c *Channel) handleMessage(msg protocol.Message) {
 func (c *Channel) handleDM(msg protocol.UserMessage) {
 	senderID := msg.Data.UIDFrom
 	threadID := msg.ThreadID()
-	content := msg.Data.Content.Text()
+
+	content, media := extractContentAndMedia(msg.Data.Content)
 	if content == "" {
 		return
 	}
@@ -269,7 +274,7 @@ func (c *Channel) handleDM(msg protocol.UserMessage) {
 		return
 	}
 
-	slog.Debug("zca DM received",
+	slog.Debug("zalo_personal DM received",
 		"sender", senderID,
 		"thread", threadID,
 		"preview", channels.Truncate(content, 50),
@@ -281,13 +286,14 @@ func (c *Channel) handleDM(msg protocol.UserMessage) {
 		"message_id": msg.Data.MsgID,
 		"platform":   "zalo_personal",
 	}
-	c.HandleMessage(senderID, threadID, content, nil, metadata, "direct")
+	c.HandleMessage(senderID, threadID, content, media, metadata, "direct")
 }
 
 func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 	senderID := msg.Data.UIDFrom
 	threadID := msg.ThreadID()
-	content := msg.Data.Content.Text()
+
+	content, media := extractContentAndMedia(msg.Data.Content)
 	if content == "" {
 		return
 	}
@@ -296,7 +302,7 @@ func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 		return
 	}
 
-	slog.Debug("zca group message received",
+	slog.Debug("zalo_personal group message received",
 		"sender", senderID,
 		"group", threadID,
 		"preview", channels.Truncate(content, 50),
@@ -309,7 +315,7 @@ func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 		"platform":   "zalo_personal",
 		"group_id":   threadID,
 	}
-	c.HandleMessage(senderID, threadID, content, nil, metadata, "group")
+	c.HandleMessage(senderID, threadID, content, media, metadata, "group")
 }
 
 // startTyping starts a typing indicator with keepalive for the given thread.
@@ -328,6 +334,74 @@ func (c *Channel) startTyping(threadID string, threadType protocol.ThreadType) {
 	}
 	c.typingCtrls.Store(threadID, ctrl)
 	ctrl.Start()
+}
+
+// extractContentAndMedia returns text content and optional local media paths from a message.
+// For text messages, media is nil. For image attachments, the image is downloaded to a temp file.
+func extractContentAndMedia(content protocol.Content) (string, []string) {
+	if text := content.Text(); text != "" {
+		return text, nil
+	}
+	att := content.ParseAttachment()
+	if att == nil {
+		return "", nil
+	}
+	text := content.AttachmentText()
+	if text == "" {
+		return "", nil
+	}
+	var media []string
+	if att.IsImage() {
+		if path, err := downloadFile(att.Href); err != nil {
+			slog.Warn("zalo_personal: failed to download image", "url", att.Href, "error", err)
+		} else {
+			media = []string{path}
+		}
+	}
+	return text, media
+}
+
+const maxImageBytes = 10 * 1024 * 1024 // 10MB
+
+// downloadFile downloads an image URL to a temp file and returns the local path.
+func downloadFile(imageURL string) (string, error) {
+	resp, err := http.Get(imageURL)
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download status %d", resp.StatusCode)
+	}
+
+	// Strip query params before extracting extension
+	path := imageURL
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	ext := filepath.Ext(path)
+	if ext == "" || len(ext) > 5 {
+		ext = ".jpg"
+	}
+
+	tmpFile, err := os.CreateTemp("", "goclaw_zca_*"+ext)
+	if err != nil {
+		return "", fmt.Errorf("create temp: %w", err)
+	}
+	defer tmpFile.Close()
+
+	written, err := io.Copy(tmpFile, io.LimitReader(resp.Body, maxImageBytes+1))
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("save: %w", err)
+	}
+	if written > maxImageBytes {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("image too large: %d bytes", written)
+	}
+
+	return tmpFile.Name(), nil
 }
 
 func (c *Channel) sendChunkedText(ctx context.Context, chatID string, threadType protocol.ThreadType, text string) error {

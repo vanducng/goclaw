@@ -19,7 +19,7 @@ func (c *Channel) authenticate(ctx context.Context) (*protocol.Session, error) {
 
 	// 1. Preloaded credentials (managed mode: from factory).
 	if c.preloadedCreds != nil {
-		slog.Info("zca: attempting login with preloaded credentials")
+		slog.Info("zalo_personal: attempting login with preloaded credentials")
 		if err := protocol.LoginWithCredentials(ctx, sess, *c.preloadedCreds); err != nil {
 			return nil, fmt.Errorf("preloaded credentials failed: %w", err)
 		}
@@ -29,18 +29,18 @@ func (c *Channel) authenticate(ctx context.Context) (*protocol.Session, error) {
 	// 2. Saved file credentials (standalone).
 	credPath := c.resolveCredentialsPath()
 	if cred := loadCredentials(credPath); cred != nil {
-		slog.Info("zca: attempting login with saved credentials", "path", credPath)
+		slog.Info("zalo_personal: attempting login with saved credentials", "path", credPath)
 		if err := protocol.LoginWithCredentials(ctx, sess, *cred); err != nil {
-			slog.Warn("zca: saved credentials failed, falling back to QR", "error", err)
+			slog.Warn("zalo_personal: saved credentials failed, falling back to QR", "error", err)
 		} else {
 			return sess, nil
 		}
 	}
 
 	// 3. QR login (interactive).
-	slog.Info("zca: starting QR login. Scan the QR code with your Zalo app.")
+	slog.Info("zalo_personal: starting QR login. Scan the QR code with your Zalo app.")
 	cred, err := protocol.LoginQR(ctx, sess, func(qrPNG []byte) {
-		slog.Info("zca: QR code generated. Scan with Zalo app.", "size", len(qrPNG))
+		slog.Info("zalo_personal: QR code generated. Scan with Zalo app.", "size", len(qrPNG))
 	})
 	if err != nil {
 		return nil, fmt.Errorf("QR login failed: %w", err)
@@ -48,9 +48,9 @@ func (c *Channel) authenticate(ctx context.Context) (*protocol.Session, error) {
 
 	// Save credentials for future re-login.
 	if err := saveCredentials(credPath, cred); err != nil {
-		slog.Warn("zca: failed to save credentials", "error", err, "path", credPath)
+		slog.Warn("zalo_personal: failed to save credentials", "error", err, "path", credPath)
 	} else {
-		slog.Info("zca: credentials saved", "path", credPath)
+		slog.Info("zalo_personal: credentials saved", "path", credPath)
 	}
 
 	return sess, nil
@@ -69,7 +69,7 @@ func (c *Channel) resolveCredentialsPath() string {
 	if dataDir == "" {
 		dataDir = config.ExpandHome("~/.goclaw/data")
 	}
-	return filepath.Join(dataDir, "zca-credentials.json")
+	return filepath.Join(dataDir, "zalo-personal-credentials.json")
 }
 
 func loadCredentials(path string) *protocol.Credentials {
@@ -79,7 +79,7 @@ func loadCredentials(path string) *protocol.Credentials {
 	}
 	var cred protocol.Credentials
 	if err := json.Unmarshal(data, &cred); err != nil {
-		slog.Warn("zca: invalid credentials file", "path", path, "error", err)
+		slog.Warn("zalo_personal: invalid credentials file", "path", path, "error", err)
 		return nil
 	}
 	if !cred.IsValid() {

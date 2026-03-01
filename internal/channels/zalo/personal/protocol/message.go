@@ -1,6 +1,12 @@
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+)
 
 // Message is the interface for incoming Zalo messages (DM or group).
 type Message interface {
@@ -47,9 +53,10 @@ const (
 )
 
 // Content is a union type: can be a plain string or an attachment object.
-// For MVP, we only extract the string value.
+// String is set for text messages; Raw is set for non-text (images, stickers, files).
 type Content struct {
 	String *string
+	Raw    json.RawMessage // non-nil when content is a JSON object (attachment)
 }
 
 func (c *Content) UnmarshalJSON(data []byte) error {
@@ -58,7 +65,7 @@ func (c *Content) UnmarshalJSON(data []byte) error {
 		c.String = &s
 		return nil
 	}
-	// Non-string content (attachments, stickers, etc.) — ignore for MVP
+	c.Raw = slices.Clone(data) // preserve raw attachment payload
 	return nil
 }
 
@@ -75,6 +82,67 @@ func (c Content) Text() string {
 		return *c.String
 	}
 	return ""
+}
+
+// Attachment holds parsed fields from a non-text content object.
+type Attachment struct {
+	Title string `json:"title"`
+	Href  string `json:"href"`
+}
+
+// ParseAttachment extracts attachment metadata from non-text content.
+// Returns nil if content is plain text or unrecognized.
+func (c Content) ParseAttachment() *Attachment {
+	if c.Raw == nil {
+		return nil
+	}
+	var att Attachment
+	if json.Unmarshal(c.Raw, &att) != nil {
+		return &Attachment{} // unrecognized but non-text
+	}
+	return &att
+}
+
+// imageExts lists file extensions recognized as images by the agent's vision pipeline.
+var imageExts = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
+}
+
+// IsImage reports whether the attachment href points to an image file.
+// Checks both file extension and Zalo CDN path patterns (e.g. /jpg/, /png/).
+func (a *Attachment) IsImage() bool {
+	if a == nil || a.Href == "" {
+		return false
+	}
+	path := strings.SplitN(a.Href, "?", 2)[0]
+	if imageExts[strings.ToLower(filepath.Ext(path))] {
+		return true
+	}
+	// Zalo CDN paths like https://f20-zpc.zdn.vn/jpg/...
+	lower := strings.ToLower(path)
+	return strings.Contains(lower, "/jpg/") || strings.Contains(lower, "/png/") ||
+		strings.Contains(lower, "/gif/") || strings.Contains(lower, "/webp/")
+}
+
+// AttachmentText returns a human-readable placeholder for non-text content.
+func (c Content) AttachmentText() string {
+	att := c.ParseAttachment()
+	if att == nil {
+		return ""
+	}
+	if att.IsImage() {
+		if att.Title != "" {
+			return fmt.Sprintf("[User sent an image: %s]", att.Title)
+		}
+		return "[User sent an image]"
+	}
+	if att.Href != "" {
+		if att.Title != "" {
+			return fmt.Sprintf("[User sent a file: %s]", att.Title)
+		}
+		return "[User sent a file]"
+	}
+	return "[User sent a non-text message]"
 }
 
 // UserMessage represents a DM (type=0).

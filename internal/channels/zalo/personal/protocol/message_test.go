@@ -19,7 +19,7 @@ func TestContent_UnmarshalJSON_String(t *testing.T) {
 }
 
 func TestContent_UnmarshalJSON_Object(t *testing.T) {
-	// Non-string content (attachment) should not error, just be nil
+	// Non-string content (attachment) should preserve raw JSON
 	var c Content
 	if err := json.Unmarshal([]byte(`{"type":"sticker","id":123}`), &c); err != nil {
 		t.Fatal(err)
@@ -30,6 +30,83 @@ func TestContent_UnmarshalJSON_Object(t *testing.T) {
 	if c.Text() != "" {
 		t.Errorf("Text() = %q, want empty", c.Text())
 	}
+	if c.Raw == nil {
+		t.Error("expected Raw to be preserved for object content")
+	}
+}
+
+func TestContent_AttachmentText(t *testing.T) {
+	t.Run("image with caption", func(t *testing.T) {
+		var c Content
+		raw := `{"title":"what do you see","href":"https://example.com/photo.jpg","thumb":"https://example.com/thumb.jpg"}`
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			t.Fatal(err)
+		}
+		got := c.AttachmentText()
+		want := "[User sent an image: what do you see]"
+		if got != want {
+			t.Errorf("AttachmentText() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("image without caption", func(t *testing.T) {
+		var c Content
+		raw := `{"title":"","href":"https://example.com/photo.jpg"}`
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			t.Fatal(err)
+		}
+		got := c.AttachmentText()
+		if got != "[User sent an image]" {
+			t.Errorf("AttachmentText() = %q, want '[User sent an image]'", got)
+		}
+	})
+
+	t.Run("file with caption", func(t *testing.T) {
+		var c Content
+		raw := `{"title":"report.pdf","href":"https://example.com/report.pdf"}`
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			t.Fatal(err)
+		}
+		got := c.AttachmentText()
+		want := "[User sent a file: report.pdf]"
+		if got != want {
+			t.Errorf("AttachmentText() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("file without caption", func(t *testing.T) {
+		var c Content
+		raw := `{"title":"","href":"https://example.com/doc.docx"}`
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			t.Fatal(err)
+		}
+		got := c.AttachmentText()
+		if got != "[User sent a file]" {
+			t.Errorf("AttachmentText() = %q, want '[User sent a file]'", got)
+		}
+	})
+
+	t.Run("non-image attachment", func(t *testing.T) {
+		var c Content
+		raw := `{"type":"sticker","id":123}`
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			t.Fatal(err)
+		}
+		got := c.AttachmentText()
+		if got != "[User sent a non-text message]" {
+			t.Errorf("AttachmentText() = %q, want '[User sent a non-text message]'", got)
+		}
+	})
+
+	t.Run("text content returns empty", func(t *testing.T) {
+		var c Content
+		if err := json.Unmarshal([]byte(`"hello"`), &c); err != nil {
+			t.Fatal(err)
+		}
+		if c.AttachmentText() != "" {
+			t.Errorf("AttachmentText() should be empty for text content")
+		}
+	})
 }
 
 func TestContent_MarshalJSON(t *testing.T) {
@@ -158,6 +235,32 @@ func TestNewGroupMessage(t *testing.T) {
 			t.Errorf("ThreadID = %q, want 'group_abc'", gm.ThreadID())
 		}
 	})
+}
+
+func TestAttachment_IsImage(t *testing.T) {
+	tests := []struct {
+		name string
+		att  *Attachment
+		want bool
+	}{
+		{"nil attachment", nil, false},
+		{"no href", &Attachment{Title: "test"}, false},
+		{"jpg", &Attachment{Href: "https://cdn.example.com/photo.jpg"}, true},
+		{"png with query", &Attachment{Href: "https://cdn.example.com/img.png?w=100"}, true},
+		{"webp", &Attachment{Href: "https://cdn.example.com/sticker.webp"}, true},
+		{"pdf", &Attachment{Href: "https://cdn.example.com/doc.pdf"}, false},
+		{"docx", &Attachment{Href: "https://cdn.example.com/report.docx"}, false},
+		{"zalo cdn jpg path", &Attachment{Href: "https://f20-zpc.zdn.vn/jpg/abc123.jpg"}, true},
+		{"zalo cdn path no ext", &Attachment{Href: "https://f20-zpc.zdn.vn/jpg/abc123"}, true},
+		{"no extension", &Attachment{Href: "https://cdn.example.com/file"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.att.IsImage(); got != tt.want {
+				t.Errorf("IsImage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestTMessage_UnmarshalJSON(t *testing.T) {

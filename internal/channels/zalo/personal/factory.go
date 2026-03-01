@@ -11,31 +11,31 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
-// zcaCreds maps the credentials JSON from the channel_instances table.
-type zcaCreds struct {
+// zaloCreds maps the credentials JSON from the channel_instances table.
+type zaloCreds struct {
 	IMEI      string               `json:"imei"`
 	Cookie    *protocol.CookieUnion `json:"cookie"`
 	UserAgent string               `json:"userAgent"`
 	Language  *string              `json:"language,omitempty"`
 }
 
-// zcaInstanceConfig maps the config JSONB from the channel_instances table.
-type zcaInstanceConfig struct {
+// zaloInstanceConfig maps the config JSONB from the channel_instances table.
+type zaloInstanceConfig struct {
 	DMPolicy       string   `json:"dm_policy,omitempty"`
 	GroupPolicy    string   `json:"group_policy,omitempty"`
 	RequireMention *bool    `json:"require_mention,omitempty"`
 	AllowFrom      []string `json:"allow_from,omitempty"`
 }
 
-// Factory creates a ZCA channel from DB instance data (managed mode).
+// Factory creates a Zalo Personal channel from DB instance data (managed mode).
 // Does NOT trigger QR login — credentials must be provided.
 func Factory(name string, creds json.RawMessage, cfg json.RawMessage,
 	msgBus *bus.MessageBus, pairingSvc store.PairingStore) (channels.Channel, error) {
 
-	var c zcaCreds
+	var c zaloCreds
 	if len(creds) > 0 {
 		if err := json.Unmarshal(creds, &c); err != nil {
-			return nil, fmt.Errorf("decode zca credentials: %w", err)
+			return nil, fmt.Errorf("decode zalo_personal credentials: %w", err)
 		}
 	}
 
@@ -45,14 +45,14 @@ func Factory(name string, creds json.RawMessage, cfg json.RawMessage,
 		return nil, nil
 	}
 
-	var ic zcaInstanceConfig
+	var ic zaloInstanceConfig
 	if len(cfg) > 0 {
 		if err := json.Unmarshal(cfg, &ic); err != nil {
-			return nil, fmt.Errorf("decode zca config: %w", err)
+			return nil, fmt.Errorf("decode zalo_personal config: %w", err)
 		}
 	}
 
-	zcaCfg := config.ZaloPersonalConfig{
+	zaloCfg := config.ZaloPersonalConfig{
 		Enabled:        true,
 		AllowFrom:      ic.AllowFrom,
 		DMPolicy:       ic.DMPolicy,
@@ -60,7 +60,7 @@ func Factory(name string, creds json.RawMessage, cfg json.RawMessage,
 		RequireMention: ic.RequireMention,
 	}
 
-	ch, err := New(zcaCfg, msgBus, pairingSvc)
+	ch, err := New(zaloCfg, msgBus, pairingSvc)
 	if err != nil {
 		return nil, err
 	}

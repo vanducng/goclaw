@@ -20,7 +20,7 @@ func (c *Channel) checkDMPolicy(senderID, chatID string) bool {
 
 	switch dmPolicy {
 	case "disabled":
-		slog.Debug("zca DM rejected: DMs disabled", "sender_id", senderID)
+		slog.Debug("zalo_personal DM rejected: DMs disabled", "sender_id", senderID)
 		return false
 
 	case "open":
@@ -28,7 +28,7 @@ func (c *Channel) checkDMPolicy(senderID, chatID string) bool {
 
 	case "allowlist":
 		if !c.IsAllowed(senderID) {
-			slog.Debug("zca DM rejected by allowlist", "sender_id", senderID)
+			slog.Debug("zalo_personal DM rejected by allowlist", "sender_id", senderID)
 			return false
 		}
 		return true
@@ -63,7 +63,7 @@ func (c *Channel) sendPairingReply(senderID, chatID string) {
 
 	code, err := c.pairingService.RequestPairing(senderID, c.Name(), chatID, "default")
 	if err != nil {
-		slog.Debug("zca pairing request failed", "sender_id", senderID, "error", err)
+		slog.Debug("zalo_personal pairing request failed", "sender_id", senderID, "error", err)
 		return
 	}
 
@@ -75,10 +75,10 @@ func (c *Channel) sendPairingReply(senderID, chatID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := protocol.SendMessage(ctx, c.sess, chatID, protocol.ThreadTypeUser, replyText); err != nil {
-		slog.Warn("zca: failed to send pairing reply", "error", err)
+		slog.Warn("zalo_personal: failed to send pairing reply", "error", err)
 	} else {
 		c.pairingDebounce.Store(senderID, time.Now())
-		slog.Info("zca pairing reply sent", "sender_id", senderID, "code", code)
+		slog.Info("zalo_personal pairing reply sent", "sender_id", senderID, "code", code)
 	}
 }
 
@@ -91,12 +91,12 @@ func (c *Channel) checkGroupPolicy(senderID, groupID string, mentions []*protoco
 
 	switch groupPolicy {
 	case "disabled":
-		slog.Debug("zca group message rejected: groups disabled", "group_id", groupID)
+		slog.Debug("zalo_personal group message rejected: groups disabled", "group_id", groupID)
 		return false
 
 	case "allowlist":
 		if !c.IsAllowed(groupID) {
-			slog.Debug("zca group message rejected by allowlist", "group_id", groupID)
+			slog.Debug("zalo_personal group message rejected by allowlist", "group_id", groupID)
 			return false
 		}
 	}
@@ -104,7 +104,7 @@ func (c *Channel) checkGroupPolicy(senderID, groupID string, mentions []*protoco
 	// @mention gating: only process group messages that @mention the bot.
 	if c.requireMention {
 		if !isBotMentioned(c.sess.UID, mentions) {
-			slog.Debug("zca group message skipped: not mentioned",
+			slog.Debug("zalo_personal group message skipped: not mentioned",
 				"group_id", groupID,
 				"sender_id", senderID,
 			)
