@@ -131,6 +131,7 @@ const (
 
 	MethodHeartbeat = "heartbeat"
 
-	// Zalo Personal QR auth (managed mode)
-	MethodZaloPersonalQRStart = "zalo.personal.qr.start"
+	// Zalo Personal (managed mode)
+	MethodZaloPersonalQRStart   = "zalo.personal.qr.start"
+	MethodZaloPersonalContacts  = "zalo.personal.contacts"
 )

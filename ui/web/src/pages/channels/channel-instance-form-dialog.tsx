@@ -22,6 +22,7 @@ import type { AgentData } from "@/types/agent";
 import { slugify, isValidSlug } from "@/lib/slug";
 import { credentialsSchema, configSchema } from "./channel-schemas";
 import { ChannelFields } from "./channel-fields";
+import { ZaloContactsPicker } from "./zalo-contacts-picker";
 
 const CHANNEL_TYPES = [
   { value: "telegram", label: "Telegram" },
@@ -230,16 +231,49 @@ export function ChannelInstanceFormDialog({
             </fieldset>
           )}
 
+          {/* Zalo Personal: QR-only auth info */}
+          {channelType === "zalo_personal" && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 p-3">
+              {instance ? (
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${instance.has_credentials ? "bg-green-500" : "bg-amber-500"}`} />
+                  <span className="text-sm">
+                    {instance.has_credentials ? "Authenticated" : "Not authenticated"}
+                  </span>
+                  {!instance.has_credentials && (
+                    <span className="text-xs text-muted-foreground ml-1">
+                      — Use QR login button from the channels table
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Authenticate via QR login after creating this instance.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Config section */}
           {cfgFields.length > 0 && (
             <fieldset className="rounded-md border p-3 space-y-3">
               <legend className="px-1 text-sm font-medium">Configuration</legend>
               <ChannelFields
-                fields={cfgFields}
+                fields={channelType === "zalo_personal" && instance
+                  ? cfgFields.filter((f) => f.key !== "allow_from")
+                  : cfgFields}
                 values={configValues}
                 onChange={handleConfigChange}
                 idPrefix="ci-cfg"
               />
+              {channelType === "zalo_personal" && instance && (
+                <ZaloContactsPicker
+                  instanceId={instance.id}
+                  hasCredentials={instance.has_credentials}
+                  value={(configValues.allow_from as string[]) ?? []}
+                  onChange={(ids) => handleConfigChange("allow_from", ids.length > 0 ? ids : undefined)}
+                />
+              )}
             </fieldset>
           )}
 

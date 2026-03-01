@@ -99,6 +99,10 @@ func getServiceURL(sess *Session, service string) string {
 		urls = sess.LoginInfo.ZpwServiceMapV3.Group
 	case "file":
 		urls = sess.LoginInfo.ZpwServiceMapV3.File
+	case "profile":
+		urls = sess.LoginInfo.ZpwServiceMapV3.Profile
+	case "group_poll":
+		urls = sess.LoginInfo.ZpwServiceMapV3.GroupPoll
 	}
 	if len(urls) == 0 {
 		return ""

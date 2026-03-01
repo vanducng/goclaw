@@ -48,11 +48,7 @@ export const credentialsSchema: Record<string, FieldDef[]> = {
     { key: "token", label: "OA Access Token", type: "password", required: true },
     { key: "webhook_secret", label: "Webhook Secret", type: "password" },
   ],
-  zalo_personal: [
-    { key: "imei", label: "IMEI", type: "text", help: "Auto-populated via QR login" },
-    { key: "cookie", label: "Cookie JSON", type: "text", help: "Auto-populated via QR login" },
-    { key: "userAgent", label: "User Agent", type: "text" },
-  ],
+  zalo_personal: [],
   whatsapp: [
     { key: "bridge_url", label: "Bridge URL", type: "text", required: true, placeholder: "http://bridge:3000" },
   ],
