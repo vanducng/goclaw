@@ -18,6 +18,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels/telegram"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/whatsapp"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/zalo"
+	zalopersonal "github.com/nextlevelbuilder/goclaw/internal/channels/zalo/personal"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/cron"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
@@ -674,6 +675,7 @@ func runGateway() {
 		instanceLoader.RegisterFactory("discord", discord.Factory)
 		instanceLoader.RegisterFactory("feishu", feishu.Factory)
 		instanceLoader.RegisterFactory("zalo_oa", zalo.Factory)
+		instanceLoader.RegisterFactory("zalo_personal", zalopersonal.Factory)
 		instanceLoader.RegisterFactory("whatsapp", whatsapp.Factory)
 		if err := instanceLoader.LoadAll(context.Background()); err != nil {
 			slog.Error("failed to load channel instances from DB", "error", err)
@@ -719,6 +721,16 @@ func runGateway() {
 		} else {
 			channelMgr.RegisterChannel("zalo", z)
 			slog.Info("zalo channel enabled (config)")
+		}
+	}
+
+	if cfg.Channels.ZaloPersonal.Enabled && instanceLoader == nil {
+		zp, err := zalopersonal.New(cfg.Channels.ZaloPersonal, msgBus, pairingStore)
+		if err != nil {
+			slog.Error("failed to initialize zca channel", "error", err)
+		} else {
+			channelMgr.RegisterChannel("zalo_personal", zp)
+			slog.Info("zca (zalo personal) channel enabled (config)")
 		}
 	}
 
