@@ -193,6 +193,7 @@ func (cu *CookieUnion) GetCookies() []Cookie {
 
 // BuildCookieJar populates a cookie jar from the stored cookies.
 // Strips leading "." from domains (Zalo protocol requirement).
+// Sets cookies for both the base URL and wpa.chat.zalo.me (used by login API).
 func (cu *CookieUnion) BuildCookieJar(u *url.URL, jar http.CookieJar) {
 	src := cu.GetCookies()
 	cookieArr := make([]Cookie, len(src))
@@ -210,6 +211,10 @@ func (cu *CookieUnion) BuildCookieJar(u *url.URL, jar http.CookieJar) {
 		cookies[i] = c.ToHTTPCookie()
 	}
 	jar.SetCookies(u, cookies)
+
+	// Also set cookies for wpa.chat.zalo.me — the login API uses this host.
+	wpaURL := &url.URL{Scheme: "https", Host: "wpa.chat.zalo.me"}
+	jar.SetCookies(wpaURL, cookies)
 }
 
 func (cu CookieUnion) MarshalJSON() ([]byte, error) {
