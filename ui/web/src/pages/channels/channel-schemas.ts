@@ -48,6 +48,11 @@ export const credentialsSchema: Record<string, FieldDef[]> = {
     { key: "token", label: "OA Access Token", type: "password", required: true },
     { key: "webhook_secret", label: "Webhook Secret", type: "password" },
   ],
+  zalo_personal: [
+    { key: "imei", label: "IMEI", type: "text", required: true, help: "Generated during QR login" },
+    { key: "cookie", label: "Cookie JSON", type: "text", required: true, help: "Exported from standalone QR login" },
+    { key: "userAgent", label: "User Agent", type: "text" },
+  ],
   whatsapp: [
     { key: "bridge_url", label: "Bridge URL", type: "text", required: true, placeholder: "http://bridge:3000" },
   ],
@@ -92,6 +97,12 @@ export const configSchema: Record<string, FieldDef[]> = {
     { key: "webhook_url", label: "Webhook URL", type: "text", placeholder: "https://..." },
     { key: "media_max_mb", label: "Max Media Size (MB)", type: "number", defaultValue: 5 },
     { key: "allow_from", label: "Allowed Users", type: "tags", help: "Zalo user IDs" },
+  ],
+  zalo_personal: [
+    { key: "dm_policy", label: "DM Policy", type: "select", options: dmPolicyOptions, defaultValue: "pairing" },
+    { key: "group_policy", label: "Group Policy", type: "select", options: groupPolicyOptions, defaultValue: "open" },
+    { key: "require_mention", label: "Require @mention in groups", type: "boolean", defaultValue: true },
+    { key: "allow_from", label: "Allowed Users", type: "tags", help: "Zalo user IDs or group IDs" },
   ],
   whatsapp: [
     { key: "dm_policy", label: "DM Policy", type: "select", options: dmPolicyOptions, defaultValue: "open" },
