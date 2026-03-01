@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,15 @@ export function ZaloContactsPicker({ instanceId, hasCredentials, value, onChange
   const [search, setSearch] = useState("");
   const [manualId, setManualId] = useState("");
   const { loading, error, call: fetchContacts } = useWsCall<ContactsResult>("zalo.personal.contacts");
+  const autoLoaded = useRef(false);
+
+  // Auto-load contacts when there are already selected IDs (reopened modal)
+  useEffect(() => {
+    if (hasCredentials && value.length > 0 && !contacts && !autoLoaded.current) {
+      autoLoaded.current = true;
+      fetchContacts({ instance_id: instanceId }).then(setContacts).catch(() => {});
+    }
+  }, [hasCredentials, value.length, contacts, instanceId, fetchContacts]);
 
   const handleLoad = async () => {
     try {
@@ -60,6 +69,14 @@ export function ZaloContactsPicker({ instanceId, hasCredentials, value, onChange
       onChange([...value, trimmed]);
       setManualId("");
     }
+  };
+
+  const resolveName = (id: string): string => {
+    const friend = contacts?.friends.find((f) => f.userId === id);
+    if (friend) return friend.displayName;
+    const group = contacts?.groups.find((g) => g.groupId === id);
+    if (group) return group.name;
+    return id;
   };
 
   if (!hasCredentials) {
@@ -95,19 +112,14 @@ export function ZaloContactsPicker({ instanceId, hasCredentials, value, onChange
       {/* Selected tags */}
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {value.map((id) => {
-            const friend = contacts?.friends.find((f) => f.userId === id);
-            const group = contacts?.groups.find((g) => g.groupId === id);
-            const label = friend?.displayName ?? group?.name ?? id;
-            return (
-              <Badge key={id} variant="secondary" className="gap-1">
-                {label}
-                <button type="button" onClick={() => toggle(id)} className="ml-1 text-xs hover:text-destructive">
-                  ×
-                </button>
-              </Badge>
-            );
-          })}
+          {value.map((id) => (
+            <Badge key={id} variant="secondary" className="gap-1">
+              {resolveName(id)}
+              <button type="button" onClick={() => toggle(id)} className="ml-1 text-xs hover:text-destructive">
+                ×
+              </button>
+            </Badge>
+          ))}
         </div>
       )}
 
