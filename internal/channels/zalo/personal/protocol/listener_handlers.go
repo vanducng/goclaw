@@ -90,22 +90,33 @@ func (ln *Listener) handleGroupMessages(ctx context.Context, data string, encTyp
 // --- Decryption ---
 
 func (ln *Listener) decryptEventData(data string, encType uint, cipherKey string) ([]byte, error) {
+	var result []byte
+	var err error
+
 	switch encType {
 	case 0: // plaintext
-		return []byte(data), nil
+		result = []byte(data)
 	case 1: // base64 only
-		return base64.StdEncoding.DecodeString(data)
+		result, err = base64.StdEncoding.DecodeString(data)
 	case 2: // AES-GCM + gzip
-		raw, err := ln.decryptAESGCMPayload(data, cipherKey)
-		if err != nil {
-			return nil, err
+		raw, e := ln.decryptAESGCMPayload(data, cipherKey)
+		if e != nil {
+			return nil, e
 		}
-		return decompressGzip(raw)
+		result, err = decompressGzip(raw)
 	case 3: // AES-GCM raw (no gzip)
-		return ln.decryptAESGCMPayload(data, cipherKey)
+		result, err = ln.decryptAESGCMPayload(data, cipherKey)
 	default:
 		return nil, fmt.Errorf("unknown encryption type %d", encType)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+	if !utf8.Valid(result) {
+		return nil, fmt.Errorf("decrypted payload is not valid UTF-8")
+	}
+	return result, nil
 }
 
 func (ln *Listener) decryptAESGCMPayload(data, cipherKey string) ([]byte, error) {
@@ -134,14 +145,7 @@ func (ln *Listener) decryptAESGCMPayload(data, cipherKey string) ([]byte, error)
 	aad := decoded[16:32]
 	ct := decoded[32:]
 
-	plain, err := DecodeAESGCM(key, iv, aad, ct)
-	if err != nil {
-		return nil, err
-	}
-	if !utf8.Valid(plain) {
-		return nil, fmt.Errorf("decrypted payload is not valid UTF-8")
-	}
-	return plain, nil
+	return DecodeAESGCM(key, iv, aad, ct)
 }
 
 func decompressGzip(data []byte) ([]byte, error) {
