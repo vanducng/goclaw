@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -66,17 +65,13 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("zalo_personal: read send response: %w", err)
-	}
 	var result struct {
 		ErrorCode int `json:"error_code"`
 		Data      struct {
 			MsgID json.Number `json:"msgId"` // can be string or number
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := readJSON(resp, &result); err != nil {
 		return "", fmt.Errorf("zalo_personal: parse send response: %w", err)
 	}
 	if result.ErrorCode != 0 {
