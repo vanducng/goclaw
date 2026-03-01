@@ -136,7 +136,6 @@ func fetchGroupIDs(ctx context.Context, sess *Session) (map[string]string, error
 	if err != nil {
 		return nil, fmt.Errorf("zalo_personal: decrypt group IDs: %w", err)
 	}
-
 	var result struct {
 		GridVerMap map[string]string `json:"gridVerMap"`
 	}
@@ -153,8 +152,14 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 		return nil, fmt.Errorf("zalo_personal: no group service URL")
 	}
 
-	// Build payload with gridVerMap as JSON string
-	gridVerJSON, err := json.Marshal(gridVerMap)
+	// Build payload with version 0 to force full data retrieval.
+	// Passing the actual version causes the server to return the group
+	// in "unchangedsGroup" with no info in "gridInfoMap".
+	zeroVerMap := make(map[string]int, len(gridVerMap))
+	for id := range gridVerMap {
+		zeroVerMap[id] = 0
+	}
+	gridVerJSON, err := json.Marshal(zeroVerMap)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +203,6 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 	if err != nil {
 		return nil, fmt.Errorf("zalo_personal: decrypt group details: %w", err)
 	}
-
 	var result struct {
 		GridInfoMap map[string]struct {
 			Name        string `json:"name"`
@@ -209,7 +213,6 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 	if err := json.Unmarshal(plain, &result); err != nil {
 		return nil, fmt.Errorf("zalo_personal: parse group details: %w", err)
 	}
-
 	groups := make([]GroupListInfo, 0, len(result.GridInfoMap))
 	for id, info := range result.GridInfoMap {
 		groups = append(groups, GroupListInfo{
