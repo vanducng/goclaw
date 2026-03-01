@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
-
-	"github.com/coder/websocket"
 )
 
 const (
@@ -29,8 +28,9 @@ type Listener struct {
 	wsURL       string
 	rotateCount int
 
-	conn      *websocket.Conn
-	cipherKey string
+	client      *WSClient
+	cipherKey   string
+	connectedAt time.Time
 
 	retryStates map[string]*retryState
 
@@ -86,7 +86,7 @@ func (ln *Listener) Start(ctx context.Context) error {
 	ln.mu.Lock()
 	defer ln.mu.Unlock()
 
-	if ln.conn != nil {
+	if ln.client != nil {
 		return fmt.Errorf("zalo_personal: listener already started")
 	}
 
@@ -95,7 +95,6 @@ func (ln *Listener) Start(ctx context.Context) error {
 
 	u, _ := url.Parse(ln.wsURL)
 	h := http.Header{}
-	h.Set("Accept-Encoding", "gzip")
 	h.Set("Accept-Language", "en-US,en;q=0.9")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("Host", u.Host)
@@ -103,36 +102,35 @@ func (ln *Listener) Start(ctx context.Context) error {
 	h.Set("Pragma", "no-cache")
 	h.Set("User-Agent", ln.sess.UserAgent)
 
-	conn, _, err := websocket.Dial(lctx, ln.wsURL, &websocket.DialOptions{
-		HTTPHeader: h,
-		HTTPClient: ln.sess.Client,
-	})
+	client, err := DialWS(lctx, ln.wsURL, h, ln.sess.CookieJar)
 	if err != nil {
 		cancel()
-		return fmt.Errorf("zalo_personal: ws dial: %w", err)
+		return err
 	}
-	conn.SetReadLimit(1 << 20) // 1MB
 
-	ln.conn = conn
+	slog.Debug("zalo websocket connected", "url", ln.wsURL)
+
+	ln.client = client
+	ln.connectedAt = time.Now()
 	ln.wg.Add(1)
 	go ln.run(lctx)
 	return nil
 }
 
-// Stop gracefully closes the WebSocket connection.
+// Stop gracefully closes the WebSocket connection and cancels any pending reconnect.
 func (ln *Listener) Stop() {
 	ln.mu.Lock()
-	conn := ln.conn
+	client := ln.client
 	cancel := ln.cancel
 	ln.mu.Unlock()
 
-	if conn == nil {
-		return
-	}
+	// Always cancel context to prevent pending reconnect timers from firing.
 	if cancel != nil {
 		cancel()
 	}
-	conn.Close(websocket.StatusNormalClosure, "")
+	if client != nil {
+		client.Close(1000, "")
+	}
 	ln.wg.Wait()
 }
 
@@ -143,14 +141,51 @@ func (ln *Listener) run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		_, data, err := ln.conn.Read(ctx)
+
+		var data []byte
+		var err error
+
+		// Apply read deadline if ping loop is active (cipher key received).
+		// Detects silent disconnects where Zalo stops sending without closing.
+		ln.mu.RLock()
+		hasPing := ln.pingCancel != nil
+		ln.mu.RUnlock()
+
+		if hasPing {
+			readCtx, rcancel := context.WithTimeout(ctx, ln.readDeadline())
+			data, err = ln.client.ReadMessage(readCtx)
+			rcancel()
+		} else {
+			data, err = ln.client.ReadMessage(ctx)
+		}
+
 		if err != nil {
 			ci := parseWSCloseInfo(err)
+			// Distinguish read timeout (silent disconnect) from real close.
+			// If the parent ctx is still alive but we got a deadline/cancel error,
+			// it was the per-read timeout that expired.
+			if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+				ci = CloseInfo{Code: 1006, Reason: "read timeout (silent disconnect)"}
+				slog.Warn("zca silent disconnect detected")
+			}
 			ln.handleDisconnect(ctx, ci)
 			return
 		}
 		ln.handleFrame(ctx, data)
 	}
+}
+
+const defaultReadDeadline = 3 * time.Minute
+
+// readDeadline returns 2.5× the ping interval, or 3 minutes as fallback.
+func (ln *Listener) readDeadline() time.Duration {
+	if ln.sess.Settings != nil {
+		interval := ln.sess.Settings.Features.Socket.PingInterval
+		if interval > 0 {
+			return time.Duration(interval) * time.Millisecond * 5 / 2
+		}
+	}
+	return defaultReadDeadline
 }
 
 func (ln *Listener) handleFrame(ctx context.Context, data []byte) {
@@ -184,10 +219,10 @@ func (ln *Listener) handleFrame(ctx context.Context, data []byte) {
 	case "1_3000_0":
 		slog.Warn("zalo_personal: duplicate connection detected, closing")
 		ln.mu.RLock()
-		conn := ln.conn
+		client := ln.client
 		ln.mu.RUnlock()
-		if conn != nil {
-			conn.Close(websocket.StatusCode(CloseCodeDuplicate), "duplicate")
+		if client != nil {
+			client.Close(CloseCodeDuplicate, "duplicate")
 		}
 	}
 }
@@ -212,3 +247,4 @@ func (ln *Listener) handleCipherKey(ctx context.Context, key *string) {
 		}
 	}
 }
+

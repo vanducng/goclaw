@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useChannels } from "./hooks/use-channels";
 import { useChannelInstances, type ChannelInstanceData, type ChannelInstanceInput } from "./hooks/use-channel-instances";
 import { ChannelInstanceFormDialog } from "./channel-instance-form-dialog";
-import { ZaloPersonalQRDialog } from "./zalo-personal-qr-dialog";
+import { channelsWithAuth, standaloneAuthDialogs } from "./channel-wizard-registry";
 import { ChannelsStatusView, channelTypeLabels } from "./channels-status-view";
 import { useAgents } from "@/pages/agents/hooks/use-agents";
 import { useMinLoading } from "@/hooks/use-min-loading";
@@ -69,12 +69,16 @@ export function ChannelsPage() {
   }
 
   const handleCreate = async (data: ChannelInstanceInput) => {
-    await createInstance(data);
+    return await createInstance(data);
   };
 
   const handleEdit = async (data: ChannelInstanceInput) => {
     if (!editInstance) return;
     await updateInstance(editInstance.id, data);
+  };
+
+  const handleUpdate = async (id: string, data: Partial<ChannelInstanceInput>) => {
+    await updateInstance(id, data);
   };
 
   const handleDelete = async () => {
@@ -190,11 +194,11 @@ export function ChannelsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {inst.channel_type === "zalo_personal" && (
+                          {channelsWithAuth.has(inst.channel_type) && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              title="Login with QR"
+                              title={status?.running ? "Re-authenticate" : "Authenticate to start channel"}
                               onClick={() => setQrTarget(inst)}
                             >
                               <QrCode className="h-3.5 w-3.5" />
@@ -238,10 +242,18 @@ export function ChannelsPage() {
 
       <ChannelInstanceFormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => {
+          setFormOpen(open);
+          if (!open) {
+            // Refresh status after dialog closes (channel may be starting).
+            // Short delay for backend to process the new/updated instance.
+            setTimeout(() => refresh(), 1500);
+          }
+        }}
         instance={editInstance}
         agents={agents}
         onSubmit={editInstance ? handleEdit : handleCreate}
+        onUpdate={handleUpdate}
       />
 
       <ConfirmDialog
@@ -255,15 +267,23 @@ export function ChannelsPage() {
         loading={deleteLoading}
       />
 
-      {qrTarget && (
-        <ZaloPersonalQRDialog
-          open={!!qrTarget}
-          onOpenChange={(v) => !v && setQrTarget(null)}
-          instanceId={qrTarget.id}
-          instanceName={qrTarget.display_name || qrTarget.name}
-          onSuccess={() => { refresh(); setQrTarget(null); }}
-        />
-      )}
+      {qrTarget && (() => {
+        const AuthDialog = standaloneAuthDialogs[qrTarget.channel_type];
+        return AuthDialog ? (
+          <AuthDialog
+            open={!!qrTarget}
+            onOpenChange={(v) => !v && setQrTarget(null)}
+            instanceId={qrTarget.id}
+            instanceName={qrTarget.display_name || qrTarget.name}
+            onSuccess={() => {
+              setQrTarget(null);
+              // Backend reload is async (~2-3s: stop → sleep → restart).
+              // Refresh after reload has time to complete.
+              setTimeout(() => refresh(), 3000);
+            }}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }

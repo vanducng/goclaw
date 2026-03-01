@@ -69,7 +69,50 @@ func LoginWithCredentials(ctx context.Context, sess *Session, cred Credentials) 
 	sess.SecretKey = loginInfo.ZPWEnk
 	sess.LoginInfo = loginInfo
 	sess.Settings = serverInfo.Settings
+
+	// Seed cookies for every service-map host so that API calls to
+	// subdomains like tt-group-poll-wpa.chat.zalo.me carry zpw_sek.
+	// Go's net/http/cookiejar does not propagate cookies across subdomains.
+	if cred.Cookie != nil && cred.Cookie.IsValid() {
+		seedServiceMapCookies(sess, cred)
+	}
+
 	return nil
+}
+
+// seedServiceMapCookies seeds the session cookie jar for every distinct host
+// found in the service map. This is necessary because Go's net/http/cookiejar
+// does not propagate cookies across subdomains (e.g. chat.zalo.me cookies are
+// not sent to tt-group-poll-wpa.chat.zalo.me).
+func seedServiceMapCookies(sess *Session, cred Credentials) {
+	if sess.LoginInfo == nil || cred.Cookie == nil {
+		return
+	}
+	sm := sess.LoginInfo.ZpwServiceMapV3
+	allURLs := make([]string, 0, 16)
+	allURLs = append(allURLs, sm.Chat...)
+	allURLs = append(allURLs, sm.Group...)
+	allURLs = append(allURLs, sm.File...)
+	allURLs = append(allURLs, sm.Profile...)
+	allURLs = append(allURLs, sm.GroupPoll...)
+
+	seen := make(map[string]struct{}, len(allURLs))
+	for _, raw := range allURLs {
+		if raw == "" {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Host == "" {
+			continue
+		}
+		host := parsed.Scheme + "://" + parsed.Host
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		u := &url.URL{Scheme: parsed.Scheme, Host: parsed.Host}
+		cred.Cookie.BuildCookieJar(u, sess.CookieJar)
+	}
 }
 
 // LoginQR performs interactive QR code login.

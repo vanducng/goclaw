@@ -9,12 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"slices"
 	"time"
 	"unicode/utf8"
-
-	"github.com/coder/websocket"
 )
 
 // --- Message handlers ---
@@ -185,17 +184,24 @@ func (ln *Listener) sendPing(ctx context.Context) {
 	copy(buf[4:], body)
 
 	ln.mu.RLock()
-	conn := ln.conn
+	client := ln.client
 	ln.mu.RUnlock()
 
-	if conn != nil {
-		_ = conn.Write(ctx, websocket.MessageBinary, buf)
+	if client != nil {
+		_ = client.WriteMessage(ctx, buf)
 	}
 }
 
 // --- Reconnect ---
 
+const stableThreshold = 60 * time.Second
+
 func (ln *Listener) handleDisconnect(ctx context.Context, ci CloseInfo) {
+	// Reset retry counters if connection was stable (>60s uptime)
+	if !ln.connectedAt.IsZero() && time.Since(ln.connectedAt) > stableThreshold {
+		ln.resetRetryCounters()
+	}
+
 	ln.reset()
 
 	select {
@@ -203,7 +209,7 @@ func (ln *Listener) handleDisconnect(ctx context.Context, ci CloseInfo) {
 	default:
 	}
 
-	// Code 3000 = duplicate — never reconnect
+	// Code 3000 = duplicate — let channel-level handle it
 	if ci.Code == CloseCodeDuplicate {
 		ln.emitClosed(ci)
 		return
@@ -234,8 +240,19 @@ func (ln *Listener) reset() {
 		ln.pingCancel()
 		ln.pingCancel = nil
 	}
-	ln.conn = nil
+	ln.client = nil
 	ln.cipherKey = ""
+	ln.connectedAt = time.Time{}
+}
+
+func (ln *Listener) resetRetryCounters() {
+	ln.mu.Lock()
+	defer ln.mu.Unlock()
+	for _, st := range ln.retryStates {
+		st.count = 0
+	}
+	ln.rotateCount = 0
+	slog.Debug("zca retry counters reset after stable connection")
 }
 
 func (ln *Listener) canRetry(code int) (int, bool) {
@@ -281,14 +298,6 @@ func (ln *Listener) emitClosed(ci CloseInfo) {
 }
 
 // --- Helpers ---
-
-func parseWSCloseInfo(err error) CloseInfo {
-	code := int(websocket.CloseStatus(err))
-	if code == -1 {
-		code = 1006 // abnormal closure
-	}
-	return CloseInfo{Code: code, Reason: err.Error()}
-}
 
 func buildWSURL(sess *Session, base string) string {
 	return makeURL(sess, base, map[string]any{"t": time.Now().UnixMilli()}, true)

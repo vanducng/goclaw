@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,8 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useWsCall } from "@/hooks/use-ws-call";
-import { useWsEvent } from "@/hooks/use-ws-event";
+import { useZaloQrLogin } from "./use-zalo-qr-login";
 
 interface ZaloPersonalQRDialogProps {
   open: boolean;
@@ -24,67 +23,25 @@ export function ZaloPersonalQRDialog({
   instanceName,
   onSuccess,
 }: ZaloPersonalQRDialogProps) {
-  const [qrPng, setQrPng] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "waiting" | "done" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const { call: startQR, loading } = useWsCall("zalo.personal.qr.start");
-
-  const handleStart = useCallback(async () => {
-    setStatus("waiting");
-    setQrPng(null);
-    setErrorMsg("");
-    try {
-      await startQR({ instance_id: instanceId });
-    } catch (err) {
-      setStatus("error");
-      setErrorMsg(err instanceof Error ? err.message : "Failed to start QR session");
-    }
-  }, [startQR, instanceId]);
+  const { qrPng, status, errorMsg, loading, start, reset } = useZaloQrLogin(instanceId);
 
   // Auto-start when dialog opens
   useEffect(() => {
-    if (open && status === "idle") handleStart();
+    if (open && status === "idle") start();
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset state when dialog closes
   useEffect(() => {
-    if (!open) {
-      setStatus("idle");
-      setQrPng(null);
-      setErrorMsg("");
-    }
-  }, [open]);
+    if (!open) reset();
+  }, [open, reset]);
 
-  useWsEvent(
-    "zalo.personal.qr.code",
-    useCallback(
-      (payload: unknown) => {
-        const p = payload as { instance_id: string; png_b64: string };
-        if (p.instance_id !== instanceId) return;
-        setQrPng(p.png_b64);
-      },
-      [instanceId],
-    ),
-  );
-
-  useWsEvent(
-    "zalo.personal.qr.done",
-    useCallback(
-      (payload: unknown) => {
-        const p = payload as { instance_id: string; success: boolean; error?: string };
-        if (p.instance_id !== instanceId) return;
-        if (p.success) {
-          setStatus("done");
-          onSuccess();
-          setTimeout(() => onOpenChange(false), 1500);
-        } else {
-          setStatus("error");
-          setErrorMsg(p.error ?? "QR login failed");
-        }
-      },
-      [instanceId, onSuccess, onOpenChange],
-    ),
-  );
+  // Auto-close on success
+  useEffect(() => {
+    if (status !== "done") return;
+    onSuccess();
+    const id = setTimeout(() => onOpenChange(false), 1500);
+    return () => clearTimeout(id);
+  }, [status, onSuccess, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!loading) onOpenChange(v); }}>
@@ -118,7 +75,7 @@ export function ZaloPersonalQRDialog({
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           {status === "error" && (
-            <Button onClick={handleStart} disabled={loading}>Retry</Button>
+            <Button onClick={start} disabled={loading}>Retry</Button>
           )}
         </div>
       </DialogContent>

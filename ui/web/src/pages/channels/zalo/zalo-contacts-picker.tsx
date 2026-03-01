@@ -38,13 +38,13 @@ export function ZaloContactsPicker({ instanceId, hasCredentials, value, onChange
   const { loading, error, call: fetchContacts } = useWsCall<ContactsResult>("zalo.personal.contacts");
   const autoLoaded = useRef(false);
 
-  // Auto-load contacts when there are already selected IDs (reopened modal)
+  // Auto-load contacts when credentials are available (resolve names for badges)
   useEffect(() => {
-    if (hasCredentials && value.length > 0 && !contacts && !autoLoaded.current) {
+    if (hasCredentials && !autoLoaded.current) {
       autoLoaded.current = true;
       fetchContacts({ instance_id: instanceId }).then(setContacts).catch(() => {});
     }
-  }, [hasCredentials, value.length, contacts, instanceId, fetchContacts]);
+  }, [hasCredentials, instanceId, fetchContacts]);
 
   const handleLoad = async () => {
     try {

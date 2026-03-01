@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
@@ -14,7 +15,12 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
-const maxTextLength = 2000
+const (
+	maxTextLength         = 2000
+	maxChannelRestarts    = 10
+	maxChannelBackoff     = 60 * time.Second
+	code3000InitialDelay  = 60 * time.Second
+)
 
 // Channel connects to Zalo Personal Chat via the internal protocol port (from zcago, MIT).
 // WARNING: This is an unofficial, reverse-engineered integration. Account may be locked/banned.
@@ -41,11 +47,11 @@ func New(cfg config.ZaloPersonalConfig, msgBus *bus.MessageBus, pairingSvc store
 
 	dmPolicy := cfg.DMPolicy
 	if dmPolicy == "" {
-		dmPolicy = "pairing"
+		dmPolicy = "allowlist"
 	}
 	groupPolicy := cfg.GroupPolicy
 	if groupPolicy == "" {
-		groupPolicy = "open"
+		groupPolicy = "allowlist"
 	}
 	base.ValidatePolicy(dmPolicy, groupPolicy)
 
@@ -124,19 +130,29 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 
 func (c *Channel) listenLoop(ctx context.Context) {
 	defer c.SetRunning(false)
+	for {
+		if !c.runListenerLoop(ctx) {
+			return
+		}
+	}
+}
 
+// runListenerLoop reads from the current listener until it closes.
+// Returns true if the channel restarted and the outer loop should continue,
+// false if the channel should stop permanently.
+func (c *Channel) runListenerLoop(ctx context.Context) bool {
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("zca listener loop stopped (context)")
-			return
+			return false
 		case <-c.stopCh:
 			slog.Info("zca listener loop stopped")
-			return
+			return false
 
 		case msg, ok := <-c.listener.Messages():
 			if !ok {
-				return
+				return false
 			}
 			c.handleMessage(msg)
 
@@ -144,18 +160,76 @@ func (c *Channel) listenLoop(ctx context.Context) {
 			slog.Warn("zca disconnected", "code", ci.Code, "reason", ci.Reason)
 
 		case ci := <-c.listener.Closed():
+			slog.Warn("zca connection closed", "code", ci.Code, "reason", ci.Reason)
+
+			// Code 3000: wait 60s before retry (duplicate session may be transient)
 			if ci.Code == protocol.CloseCodeDuplicate {
-				slog.Warn("zca duplicate connection detected (code 3000). Close other Zalo sessions and restart.",
-					"channel", c.Name())
-			} else {
-				slog.Warn("zca connection closed", "code", ci.Code, "reason", ci.Reason)
+				slog.Warn("zca duplicate session (code 3000), waiting before retry", "channel", c.Name())
+				select {
+				case <-ctx.Done():
+					return false
+				case <-c.stopCh:
+					return false
+				case <-time.After(code3000InitialDelay):
+				}
 			}
-			return
+
+			return c.restartWithBackoff(ctx)
 
 		case err := <-c.listener.Errors():
 			slog.Warn("zca listener error", "error", err)
 		}
 	}
+}
+
+// restartWithBackoff attempts to restart the channel with exponential backoff.
+// Returns true if restart succeeded and the listen loop should continue.
+func (c *Channel) restartWithBackoff(ctx context.Context) bool {
+	for attempt := range maxChannelRestarts {
+		delay := min(time.Duration(1<<uint(attempt+1))*time.Second, maxChannelBackoff)
+		slog.Info("zca restarting channel", "attempt", attempt+1, "delay", delay, "channel", c.Name())
+
+		select {
+		case <-ctx.Done():
+			return false
+		case <-c.stopCh:
+			return false
+		case <-time.After(delay):
+		}
+
+		if err := c.restart(ctx); err != nil {
+			slog.Warn("zca restart failed", "attempt", attempt+1, "error", err)
+			continue
+		}
+		return true
+	}
+	slog.Error("zca channel gave up after max restart attempts", "channel", c.Name())
+	return false
+}
+
+// restart performs a full re-authentication and listener restart.
+func (c *Channel) restart(ctx context.Context) error {
+	if c.listener != nil {
+		c.listener.Stop()
+	}
+
+	sess, err := c.authenticate(ctx)
+	if err != nil {
+		return fmt.Errorf("re-auth: %w", err)
+	}
+	c.sess = sess
+
+	ln, err := protocol.NewListener(sess)
+	if err != nil {
+		return fmt.Errorf("new listener: %w", err)
+	}
+
+	if err := ln.Start(ctx); err != nil {
+		return fmt.Errorf("start listener: %w", err)
+	}
+
+	c.listener = ln
+	return nil
 }
 
 func (c *Channel) handleMessage(msg protocol.Message) {

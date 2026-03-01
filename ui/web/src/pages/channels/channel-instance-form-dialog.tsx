@@ -20,9 +20,9 @@ import {
 import type { ChannelInstanceData, ChannelInstanceInput } from "./hooks/use-channel-instances";
 import type { AgentData } from "@/types/agent";
 import { slugify, isValidSlug } from "@/lib/slug";
-import { credentialsSchema, configSchema } from "./channel-schemas";
+import { credentialsSchema, configSchema, wizardConfig } from "./channel-schemas";
 import { ChannelFields } from "./channel-fields";
-import { ZaloContactsPicker } from "./zalo-contacts-picker";
+import { wizardAuthSteps, wizardConfigSteps, wizardEditConfigs } from "./channel-wizard-registry";
 
 const CHANNEL_TYPES = [
   { value: "telegram", label: "Telegram" },
@@ -33,12 +33,15 @@ const CHANNEL_TYPES = [
   { value: "whatsapp", label: "WhatsApp" },
 ] as const;
 
+type WizardStep = "form" | "auth" | "config";
+
 interface ChannelInstanceFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   instance?: ChannelInstanceData | null;
   agents: AgentData[];
   onSubmit: (data: ChannelInstanceInput) => Promise<unknown>;
+  onUpdate?: (id: string, data: Partial<ChannelInstanceInput>) => Promise<unknown>;
 }
 
 export function ChannelInstanceFormDialog({
@@ -47,6 +50,7 @@ export function ChannelInstanceFormDialog({
   instance,
   agents,
   onSubmit,
+  onUpdate,
 }: ChannelInstanceFormDialogProps) {
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -58,18 +62,52 @@ export function ChannelInstanceFormDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Wizard state (activated for channels with wizardConfig on create only)
+  const [step, setStep] = useState<WizardStep>("form");
+  const [createdInstanceId, setCreatedInstanceId] = useState<string | null>(null);
+  const [authCompleted, setAuthCompleted] = useState(false);
+
+  const wizard = wizardConfig[channelType];
+  const hasWizard = !instance && !!wizard;
+  const channelLabel = CHANNEL_TYPES.find((ct) => ct.value === channelType)?.label ?? channelType;
+
+  // Step navigation
+  const totalSteps = hasWizard ? 1 + wizard!.steps.length : 1;
+  const currentStepNum = step === "form" ? 1 : (wizard?.steps.indexOf(step as "auth" | "config") ?? 0) + 2;
+
+  const getNextWizardStep = useCallback((current: WizardStep): "auth" | "config" | null => {
+    if (!wizard) return null;
+    if (current === "form") return wizard.steps[0] ?? null;
+    const idx = wizard.steps.indexOf(current as "auth" | "config");
+    return idx >= 0 ? wizard.steps[idx + 1] ?? null : null;
+  }, [wizard]);
+
   useEffect(() => {
     if (open) {
       setName(instance?.name ?? "");
       setDisplayName(instance?.display_name ?? "");
       setChannelType(instance?.channel_type ?? "telegram");
       setAgentId(instance?.agent_id ?? (agents[0]?.id ?? ""));
-      setCredsValues({}); // never pre-fill credentials
+      setCredsValues({});
       setConfigValues(instance?.config ? { ...instance.config } : {});
       setEnabled(instance?.enabled ?? true);
       setError("");
+      setStep("form");
+      setCreatedInstanceId(null);
+      setAuthCompleted(false);
     }
   }, [open, instance, agents]);
+
+  // Auto-advance from auth to next step on completion
+  useEffect(() => {
+    if (step !== "auth" || !authCompleted) return;
+    const next = getNextWizardStep("auth");
+    const id = setTimeout(() => {
+      if (next) setStep(next);
+      else onOpenChange(false);
+    }, 1200);
+    return () => clearTimeout(id);
+  }, [step, authCompleted, getNextWizardStep, onOpenChange]);
 
   const handleCredsChange = useCallback((key: string, value: unknown) => {
     setCredsValues((prev) => ({ ...prev, [key]: value }));
@@ -80,20 +118,13 @@ export function ChannelInstanceFormDialog({
   }, []);
 
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      setError("Name is required");
-      return;
-    }
+    if (!name.trim()) { setError("Name is required"); return; }
     if (!isValidSlug(name.trim())) {
       setError("Name must be a valid slug (lowercase letters, numbers, hyphens only)");
       return;
     }
-    if (!agentId) {
-      setError("Agent is required");
-      return;
-    }
+    if (!agentId) { setError("Agent is required"); return; }
 
-    // Validate required credentials on create
     if (!instance) {
       const schema = credentialsSchema[channelType] ?? [];
       const missing = schema.filter((f) => f.required && !credsValues[f.key]);
@@ -103,12 +134,9 @@ export function ChannelInstanceFormDialog({
       }
     }
 
-    // Build clean config (strip undefined/empty values)
     const cleanConfig = Object.fromEntries(
       Object.entries(configValues).filter(([, v]) => v !== undefined && v !== "" && v !== null),
     );
-
-    // Build credentials JSON from field values (only non-empty values)
     const cleanCreds = Object.fromEntries(
       Object.entries(credsValues).filter(([, v]) => v !== undefined && v !== "" && v !== null),
     );
@@ -124,12 +152,22 @@ export function ChannelInstanceFormDialog({
         config: Object.keys(cleanConfig).length > 0 ? cleanConfig : undefined,
         enabled,
       };
-      // Only send credentials if user entered something
-      if (Object.keys(cleanCreds).length > 0) {
-        data.credentials = cleanCreds;
+      if (Object.keys(cleanCreds).length > 0) data.credentials = cleanCreds;
+
+      const result = await onSubmit(data);
+
+      if (hasWizard && wizard) {
+        const res = result as Record<string, unknown> | undefined;
+        const firstStep = wizard.steps[0];
+        if (typeof res?.id === "string" && firstStep) {
+          setCreatedInstanceId(res.id);
+          setStep(firstStep);
+        } else {
+          onOpenChange(false);
+        }
+      } else {
+        onOpenChange(false);
       }
-      await onSubmit(data);
-      onOpenChange(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -137,161 +175,179 @@ export function ChannelInstanceFormDialog({
     }
   };
 
+  const handleConfigDone = async () => {
+    if (!createdInstanceId || !onUpdate) { onOpenChange(false); return; }
+    const cleanConfig = Object.fromEntries(
+      Object.entries(configValues).filter(([, v]) => v !== undefined && v !== "" && v !== null),
+    );
+    setLoading(true);
+    setError("");
+    try {
+      await onUpdate(createdInstanceId, { config: cleanConfig });
+      onOpenChange(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save configuration");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkipAuth = () => {
+    const next = getNextWizardStep("auth");
+    if (next) setStep(next);
+    else onOpenChange(false);
+  };
+
+  const canClose = step !== "auth";
   const credsFields = credentialsSchema[channelType] ?? [];
+  const excludeSet = new Set(wizard?.excludeConfigFields ?? []);
   const cfgFields = configSchema[channelType] ?? [];
+  const formCfgFields = excludeSet.size > 0 ? cfgFields.filter((f) => !excludeSet.has(f.key)) : cfgFields;
+
+  // Lookup registered step components for current channel type
+  const AuthStep = wizardAuthSteps[channelType];
+  const ConfigStep = wizardConfigSteps[channelType];
+  const EditConfig = wizardEditConfigs[channelType];
+
+  const dialogTitle = instance
+    ? "Edit Channel Instance"
+    : step === "form"
+      ? "Create Channel Instance"
+      : step === "auth"
+        ? `Authenticate — ${channelLabel}`
+        : `Configure — ${channelLabel}`;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !loading && onOpenChange(v)}>
+    <Dialog open={open} onOpenChange={(v) => { if (!loading && canClose) onOpenChange(v); }}>
       <DialogContent className="max-h-[85vh] max-w-lg flex flex-col">
         <DialogHeader>
-          <DialogTitle>
-            {instance ? "Edit Channel Instance" : "Create Channel Instance"}
-          </DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          {hasWizard && (
+            <p className="text-xs text-muted-foreground">Step {currentStepNum} of {totalSteps}</p>
+          )}
         </DialogHeader>
 
-        <div className="grid gap-4 py-2 overflow-y-auto min-h-0">
-          {/* Basic fields */}
-          <div className="grid gap-1.5">
-            <Label htmlFor="ci-name">Name *</Label>
-            <Input
-              id="ci-name"
-              value={name}
-              onChange={(e) => setName(slugify(e.target.value))}
-              placeholder="my-telegram-bot"
-              disabled={!!instance}
-            />
-            <p className="text-xs text-muted-foreground">
-              Unique slug used as channel identifier
-            </p>
-          </div>
+        {/* === FORM STEP === */}
+        {step === "form" && (
+          <>
+            <div className="grid gap-4 py-2 overflow-y-auto min-h-0">
+              <div className="grid gap-1.5">
+                <Label htmlFor="ci-name">Name *</Label>
+                <Input id="ci-name" value={name} onChange={(e) => setName(slugify(e.target.value))} placeholder="my-telegram-bot" disabled={!!instance} />
+                <p className="text-xs text-muted-foreground">Unique slug used as channel identifier</p>
+              </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="ci-display">Display Name</Label>
-            <Input
-              id="ci-display"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Sales Bot"
-            />
-          </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="ci-display">Display Name</Label>
+                <Input id="ci-display" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Sales Bot" />
+              </div>
 
-          <div className="grid gap-1.5">
-            <Label>Channel Type *</Label>
-            <Select value={channelType} onValueChange={setChannelType} disabled={!!instance}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CHANNEL_TYPES.map((ct) => (
-                  <SelectItem key={ct.value} value={ct.value}>
-                    {ct.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="grid gap-1.5">
+                <Label>Channel Type *</Label>
+                <Select value={channelType} onValueChange={setChannelType} disabled={!!instance}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CHANNEL_TYPES.map((ct) => (
+                      <SelectItem key={ct.value} value={ct.value}>{ct.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="grid gap-1.5">
-            <Label>Agent *</Label>
-            <Select value={agentId} onValueChange={setAgentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select agent" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.display_name || a.agent_key}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="grid gap-1.5">
+                <Label>Agent *</Label>
+                <Select value={agentId} onValueChange={setAgentId}>
+                  <SelectTrigger><SelectValue placeholder="Select agent" /></SelectTrigger>
+                  <SelectContent>
+                    {agents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.display_name || a.agent_key}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Credentials section */}
-          {credsFields.length > 0 && (
-            <fieldset className="rounded-md border p-3 space-y-3">
-              <legend className="px-1 text-sm font-medium">
-                Credentials
-                {instance && (
-                  <span className="text-xs font-normal text-muted-foreground ml-1">
-                    (leave blank to keep current)
-                  </span>
-                )}
-              </legend>
-              <ChannelFields
-                fields={credsFields}
-                values={credsValues}
-                onChange={handleCredsChange}
-                idPrefix="ci-cred"
-                isEdit={!!instance}
-              />
-              <p className="text-xs text-muted-foreground">
-                Encrypted server-side. Never returned in API responses.
-              </p>
-            </fieldset>
-          )}
+              {credsFields.length > 0 && (
+                <fieldset className="rounded-md border p-3 space-y-3">
+                  <legend className="px-1 text-sm font-medium">
+                    Credentials
+                    {instance && <span className="text-xs font-normal text-muted-foreground ml-1">(leave blank to keep current)</span>}
+                  </legend>
+                  <ChannelFields fields={credsFields} values={credsValues} onChange={handleCredsChange} idPrefix="ci-cred" isEdit={!!instance} />
+                  <p className="text-xs text-muted-foreground">Encrypted server-side. Never returned in API responses.</p>
+                </fieldset>
+              )}
 
-          {/* Zalo Personal: QR-only auth info */}
-          {channelType === "zalo_personal" && (
-            <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 p-3">
-              {instance ? (
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${instance.has_credentials ? "bg-green-500" : "bg-amber-500"}`} />
-                  <span className="text-sm">
-                    {instance.has_credentials ? "Authenticated" : "Not authenticated"}
-                  </span>
-                  {!instance.has_credentials && (
-                    <span className="text-xs text-muted-foreground ml-1">
-                      — Use QR login button from the channels table
-                    </span>
-                  )}
+              {/* Auth status indicator (edit mode, channels with auth wizard step) */}
+              {instance && wizard?.steps.includes("auth") && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${instance.has_credentials ? "bg-green-500" : "bg-amber-500"}`} />
+                    <span className="text-sm">{instance.has_credentials ? "Authenticated" : "Not authenticated"}</span>
+                    {!instance.has_credentials && (
+                      <span className="text-xs text-muted-foreground ml-1">— Use the QR login button from the channels table</span>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Authenticate via QR login after creating this instance.
-                </p>
               )}
+
+              {/* Wizard info banner (create mode) */}
+              {hasWizard && wizard?.formBanner && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 p-3">
+                  <p className="text-sm text-muted-foreground">{wizard.formBanner}</p>
+                </div>
+              )}
+
+              {formCfgFields.length > 0 && (
+                <fieldset className="rounded-md border p-3 space-y-3">
+                  <legend className="px-1 text-sm font-medium">Configuration</legend>
+                  <ChannelFields fields={formCfgFields} values={configValues} onChange={handleConfigChange} idPrefix="ci-cfg" />
+                  {instance && EditConfig && <EditConfig instance={instance} configValues={configValues} onConfigChange={handleConfigChange} />}
+                </fieldset>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Switch id="ci-enabled" checked={enabled} onCheckedChange={setEnabled} />
+                <Label htmlFor="ci-enabled">Enabled</Label>
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
-          )}
 
-          {/* Config section */}
-          {cfgFields.length > 0 && (
-            <fieldset className="rounded-md border p-3 space-y-3">
-              <legend className="px-1 text-sm font-medium">Configuration</legend>
-              <ChannelFields
-                fields={channelType === "zalo_personal" && instance
-                  ? cfgFields.filter((f) => f.key !== "allow_from")
-                  : cfgFields}
-                values={configValues}
-                onChange={handleConfigChange}
-                idPrefix="ci-cfg"
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
+              <Button onClick={handleSubmit} disabled={loading}>
+                {loading ? "Saving..." : instance ? "Update" : wizard?.createLabel ?? "Create"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {/* === AUTH STEP (rendered by registered component) === */}
+        {step === "auth" && createdInstanceId && AuthStep && (
+          <AuthStep
+            instanceId={createdInstanceId}
+            onComplete={() => setAuthCompleted(true)}
+            onSkip={handleSkipAuth}
+          />
+        )}
+
+        {/* === CONFIG STEP (rendered by registered component) === */}
+        {step === "config" && createdInstanceId && ConfigStep && (
+          <>
+            <div className="py-2 overflow-y-auto min-h-0">
+              <ConfigStep
+                instanceId={createdInstanceId}
+                authCompleted={authCompleted}
+                configValues={configValues}
+                onConfigChange={handleConfigChange}
               />
-              {channelType === "zalo_personal" && instance && (
-                <ZaloContactsPicker
-                  instanceId={instance.id}
-                  hasCredentials={instance.has_credentials}
-                  value={(configValues.allow_from as string[]) ?? []}
-                  onChange={(ids) => handleConfigChange("allow_from", ids.length > 0 ? ids : undefined)}
-                />
-              )}
-            </fieldset>
-          )}
-
-          <div className="flex items-center gap-2">
-            <Switch id="ci-enabled" checked={enabled} onCheckedChange={setEnabled} />
-            <Label htmlFor="ci-enabled">Enabled</Label>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "Saving..." : instance ? "Update" : "Create"}
-          </Button>
-        </DialogFooter>
+              {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Skip</Button>
+              <Button onClick={handleConfigDone} disabled={loading}>{loading ? "Saving..." : "Done"}</Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
