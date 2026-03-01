@@ -750,6 +750,7 @@ func runGateway() {
 	// Register channel instances WS RPC methods (managed mode only)
 	if managedStores != nil && managedStores.ChannelInstances != nil {
 		methods.NewChannelInstancesMethods(managedStores.ChannelInstances, msgBus).Register(server.Router())
+		methods.NewZaloPersonalQRMethods(managedStores.ChannelInstances, msgBus).Register(server.Router())
 	}
 
 	// Register agent links WS RPC methods (managed mode only)

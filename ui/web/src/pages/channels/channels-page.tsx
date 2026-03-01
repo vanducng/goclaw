@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Radio, Plus, RefreshCw, Pencil, Trash2 } from "lucide-react";
+import { Radio, Plus, RefreshCw, Pencil, Trash2, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useChannels } from "./hooks/use-channels";
 import { useChannelInstances, type ChannelInstanceData, type ChannelInstanceInput } from "./hooks/use-channel-instances";
 import { ChannelInstanceFormDialog } from "./channel-instance-form-dialog";
+import { ZaloPersonalQRDialog } from "./zalo-personal-qr-dialog";
 import { ChannelsStatusView, channelTypeLabels } from "./channels-status-view";
 import { useAgents } from "@/pages/agents/hooks/use-agents";
 import { useMinLoading } from "@/hooks/use-min-loading";
@@ -28,6 +29,7 @@ export function ChannelsPage() {
   const [editInstance, setEditInstance] = useState<ChannelInstanceData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChannelInstanceData | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [qrTarget, setQrTarget] = useState<ChannelInstanceData | null>(null);
 
   const pendingSearchRef = useRef("");
   const flushSearch = useDebouncedCallback(() => {
@@ -188,6 +190,16 @@ export function ChannelsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {inst.channel_type === "zalo_personal" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Login with QR"
+                              onClick={() => setQrTarget(inst)}
+                            >
+                              <QrCode className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -242,6 +254,16 @@ export function ChannelsPage() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
+
+      {qrTarget && (
+        <ZaloPersonalQRDialog
+          open={!!qrTarget}
+          onOpenChange={(v) => !v && setQrTarget(null)}
+          instanceId={qrTarget.id}
+          instanceName={qrTarget.display_name || qrTarget.name}
+          onSuccess={() => { refresh(); setQrTarget(null); }}
+        />
+      )}
     </div>
   );
 }

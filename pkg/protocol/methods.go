@@ -130,4 +130,7 @@ const (
 	MethodBrowserScreenshot = "browser.screenshot"
 
 	MethodHeartbeat = "heartbeat"
+
+	// Zalo Personal QR auth (managed mode)
+	MethodZaloPersonalQRStart = "zalo.personal.qr.start"
 )

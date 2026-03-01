@@ -39,9 +39,10 @@ func Factory(name string, creds json.RawMessage, cfg json.RawMessage,
 		}
 	}
 
-	// Credentials required for managed mode (no interactive QR).
+	// No credentials yet — return nil,nil to signal "not ready" to instanceLoader.
+	// The channel will be created via Reload() after QR login saves creds.
 	if c.IMEI == "" || c.Cookie == nil {
-		return nil, fmt.Errorf("zca credentials required (imei + cookie). Use QR login in standalone mode first, then export credentials")
+		return nil, nil
 	}
 
 	var ic zcaInstanceConfig

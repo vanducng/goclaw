@@ -49,8 +49,8 @@ export const credentialsSchema: Record<string, FieldDef[]> = {
     { key: "webhook_secret", label: "Webhook Secret", type: "password" },
   ],
   zalo_personal: [
-    { key: "imei", label: "IMEI", type: "text", required: true, help: "Generated during QR login" },
-    { key: "cookie", label: "Cookie JSON", type: "text", required: true, help: "Exported from standalone QR login" },
+    { key: "imei", label: "IMEI", type: "text", help: "Auto-populated via QR login" },
+    { key: "cookie", label: "Cookie JSON", type: "text", help: "Auto-populated via QR login" },
     { key: "userAgent", label: "User Agent", type: "text" },
   ],
   whatsapp: [
