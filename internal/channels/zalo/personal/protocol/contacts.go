@@ -224,6 +224,8 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 }
 
 // decryptDataField decrypts an encrypted base64 data string from Zalo API response.
+// The decrypted payload is itself a Response envelope: {"error_code":0, "data":...},
+// so this function unwraps the inner envelope and returns the raw data field.
 func decryptDataField(sess *Session, data string) ([]byte, error) {
 	key := SecretKey(sess.SecretKey).Bytes()
 	if key == nil {
@@ -233,5 +235,18 @@ func decryptDataField(sess *Session, data string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return DecodeAESCBC(key, unescaped)
+	plain, err := DecodeAESCBC(key, unescaped)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unwrap inner response envelope
+	var inner Response[json.RawMessage]
+	if err := json.Unmarshal(plain, &inner); err != nil {
+		return nil, fmt.Errorf("zalo_personal: unwrap inner response: %w", err)
+	}
+	if inner.ErrorCode != 0 {
+		return nil, fmt.Errorf("zalo_personal: inner error code %d: %s", inner.ErrorCode, inner.ErrorMessage)
+	}
+	return inner.Data, nil
 }
