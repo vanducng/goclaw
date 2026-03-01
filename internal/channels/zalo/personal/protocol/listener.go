@@ -59,7 +59,7 @@ type retryState struct {
 // NewListener creates a listener from an authenticated session.
 func NewListener(sess *Session) (*Listener, error) {
 	if sess.LoginInfo == nil || len(sess.LoginInfo.ZpwWebsocket) == 0 {
-		return nil, fmt.Errorf("zca: no websocket URLs in session")
+		return nil, fmt.Errorf("zalo_personal: no websocket URLs in session")
 	}
 
 	wsURL := buildWSURL(sess, sess.LoginInfo.ZpwWebsocket[0])
@@ -87,7 +87,7 @@ func (ln *Listener) Start(ctx context.Context) error {
 	defer ln.mu.Unlock()
 
 	if ln.conn != nil {
-		return fmt.Errorf("zca: listener already started")
+		return fmt.Errorf("zalo_personal: listener already started")
 	}
 
 	lctx, cancel := context.WithCancel(ctx)
@@ -109,7 +109,7 @@ func (ln *Listener) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		cancel()
-		return fmt.Errorf("zca: ws dial: %w", err)
+		return fmt.Errorf("zalo_personal: ws dial: %w", err)
 	}
 	conn.SetReadLimit(1 << 20) // 1MB
 
@@ -169,7 +169,7 @@ func (ln *Listener) handleFrame(ctx context.Context, data []byte) {
 		Data    string  `json:"data"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		emit(ctx, ln.errorCh, fmt.Errorf("zca: parse ws frame: %w", err))
+		emit(ctx, ln.errorCh, fmt.Errorf("zalo_personal: parse ws frame: %w", err))
 		return
 	}
 
@@ -182,7 +182,7 @@ func (ln *Listener) handleFrame(ctx context.Context, data []byte) {
 	case "1_521_0":
 		ln.handleGroupMessages(ctx, envelope.Data, envelope.Encrypt)
 	case "1_3000_0":
-		slog.Warn("zca: duplicate connection detected, closing")
+		slog.Warn("zalo_personal: duplicate connection detected, closing")
 		ln.mu.RLock()
 		conn := ln.conn
 		ln.mu.RUnlock()

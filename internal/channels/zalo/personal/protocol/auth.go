@@ -20,7 +20,7 @@ import (
 // Concurrent: fetches login info (encrypted) + server info in parallel.
 func LoginWithCredentials(ctx context.Context, sess *Session, cred Credentials) error {
 	if !cred.IsValid() {
-		return fmt.Errorf("zca: invalid credentials")
+		return fmt.Errorf("zalo_personal: invalid credentials")
 	}
 
 	lang := DefaultLanguage
@@ -44,7 +44,7 @@ func LoginWithCredentials(ctx context.Context, sess *Session, cred Credentials) 
 	g.Go(func() error {
 		li, err := fetchLoginInfo(gctx, sess)
 		if err != nil {
-			return fmt.Errorf("zca: login: %w", err)
+			return fmt.Errorf("zalo_personal: login: %w", err)
 		}
 		loginInfo = li
 		return nil
@@ -52,7 +52,7 @@ func LoginWithCredentials(ctx context.Context, sess *Session, cred Credentials) 
 	g.Go(func() error {
 		si, err := fetchServerInfo(gctx, sess)
 		if err != nil {
-			return fmt.Errorf("zca: server info: %w", err)
+			return fmt.Errorf("zalo_personal: server info: %w", err)
 		}
 		serverInfo = si
 		return nil
@@ -62,7 +62,7 @@ func LoginWithCredentials(ctx context.Context, sess *Session, cred Credentials) 
 		return err
 	}
 	if loginInfo == nil || serverInfo == nil {
-		return fmt.Errorf("zca: login failed (empty response)")
+		return fmt.Errorf("zalo_personal: login failed (empty response)")
 	}
 
 	sess.UID = loginInfo.UID
@@ -78,7 +78,7 @@ func LoginWithCredentials(ctx context.Context, sess *Session, cred Credentials) 
 func LoginQR(ctx context.Context, sess *Session, qrCallback func(qrPNG []byte)) (*Credentials, error) {
 	ver, err := loadLoginPage(ctx, sess)
 	if err != nil {
-		return nil, fmt.Errorf("zca: load login page: %w", err)
+		return nil, fmt.Errorf("zalo_personal: load login page: %w", err)
 	}
 
 	qrGetLoginInfo(ctx, sess, ver)
@@ -86,7 +86,7 @@ func LoginQR(ctx context.Context, sess *Session, qrCallback func(qrPNG []byte)) 
 
 	qrData, imgBytes, err := qrGenerateCode(ctx, sess, ver)
 	if err != nil {
-		return nil, fmt.Errorf("zca: generate qr: %w", err)
+		return nil, fmt.Errorf("zalo_personal: generate qr: %w", err)
 	}
 
 	if qrCallback != nil {
@@ -98,22 +98,22 @@ func LoginQR(ctx context.Context, sess *Session, qrCallback func(qrPNG []byte)) 
 	defer cancel()
 
 	if err := qrWaitingScan(timeoutCtx, sess, ver, qrData.Code); err != nil {
-		return nil, fmt.Errorf("zca: waiting scan: %w", err)
+		return nil, fmt.Errorf("zalo_personal: waiting scan: %w", err)
 	}
 
 	// Wait for confirm (long-poll)
 	if err := qrWaitingConfirm(timeoutCtx, sess, ver, qrData.Code); err != nil {
-		return nil, fmt.Errorf("zca: waiting confirm: %w", err)
+		return nil, fmt.Errorf("zalo_personal: waiting confirm: %w", err)
 	}
 
 	// Validate session
 	if err := qrCheckSession(ctx, sess); err != nil {
-		return nil, fmt.Errorf("zca: check session: %w", err)
+		return nil, fmt.Errorf("zalo_personal: check session: %w", err)
 	}
 
 	userInfo, err := qrGetUserInfo(ctx, sess)
 	if err != nil || !userInfo.Logged {
-		return nil, fmt.Errorf("zca: get user info failed or not logged in")
+		return nil, fmt.Errorf("zalo_personal: get user info failed or not logged in")
 	}
 
 	// Build credentials from session cookies for persistence
@@ -245,7 +245,7 @@ func loadLoginPage(ctx context.Context, sess *Session) (string, error) {
 	re := regexp.MustCompile(`https:\/\/stc-zlogin\.zdn\.vn\/main-([\d.]+)\.js`)
 	match := re.FindSubmatch(body)
 	if len(match) < 2 {
-		return "", fmt.Errorf("zca: version not found in login page HTML")
+		return "", fmt.Errorf("zalo_personal: version not found in login page HTML")
 	}
 	return string(match[1]), nil
 }
@@ -335,7 +335,7 @@ func qrWaitingScan(ctx context.Context, sess *Session, ver, code string) error {
 			continue // not ready yet, retry
 		}
 		if body.ErrorCode != 0 {
-			return fmt.Errorf("zca: scan error code %d: %s", body.ErrorCode, body.ErrorMessage)
+			return fmt.Errorf("zalo_personal: scan error code %d: %s", body.ErrorCode, body.ErrorMessage)
 		}
 		return nil
 	}
@@ -363,10 +363,10 @@ func qrWaitingConfirm(ctx context.Context, sess *Session, ver, code string) erro
 			continue // not ready yet, retry
 		}
 		if body.ErrorCode == -13 {
-			return fmt.Errorf("zca: QR login declined by user")
+			return fmt.Errorf("zalo_personal: QR login declined by user")
 		}
 		if body.ErrorCode != 0 {
-			return fmt.Errorf("zca: confirm error code %d: %s", body.ErrorCode, body.ErrorMessage)
+			return fmt.Errorf("zalo_personal: confirm error code %d: %s", body.ErrorCode, body.ErrorMessage)
 		}
 		return nil
 	}

@@ -29,7 +29,7 @@ type GroupListInfo struct {
 func FetchFriends(ctx context.Context, sess *Session) ([]FriendInfo, error) {
 	baseURL := getServiceURL(sess, "profile")
 	if baseURL == "" {
-		return nil, fmt.Errorf("zca: no profile service URL")
+		return nil, fmt.Errorf("zalo_personal: no profile service URL")
 	}
 
 	payload := map[string]any{
@@ -43,7 +43,7 @@ func FetchFriends(ctx context.Context, sess *Session) ([]FriendInfo, error) {
 
 	encData, err := encryptPayload(sess, payload)
 	if err != nil {
-		return nil, fmt.Errorf("zca: encrypt friends payload: %w", err)
+		return nil, fmt.Errorf("zalo_personal: encrypt friends payload: %w", err)
 	}
 
 	reqURL := makeURL(sess, baseURL+"/api/social/friend/getfriends",
@@ -57,30 +57,30 @@ func FetchFriends(ctx context.Context, sess *Session) ([]FriendInfo, error) {
 
 	resp, err := sess.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("zca: fetch friends: %w", err)
+		return nil, fmt.Errorf("zalo_personal: fetch friends: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Response envelope: {"error_code":0, "data":"<encrypted_base64>"}
 	var envelope Response[*string]
 	if err := readJSON(resp, &envelope); err != nil {
-		return nil, fmt.Errorf("zca: parse friends response: %w", err)
+		return nil, fmt.Errorf("zalo_personal: parse friends response: %w", err)
 	}
 	if envelope.ErrorCode != 0 {
-		return nil, fmt.Errorf("zca: friends error code %d: %s", envelope.ErrorCode, envelope.ErrorMessage)
+		return nil, fmt.Errorf("zalo_personal: friends error code %d: %s", envelope.ErrorCode, envelope.ErrorMessage)
 	}
 	if envelope.Data == nil {
-		return nil, fmt.Errorf("zca: empty friends data")
+		return nil, fmt.Errorf("zalo_personal: empty friends data")
 	}
 
 	plain, err := decryptDataField(sess, *envelope.Data)
 	if err != nil {
-		return nil, fmt.Errorf("zca: decrypt friends: %w", err)
+		return nil, fmt.Errorf("zalo_personal: decrypt friends: %w", err)
 	}
 
 	var friends []FriendInfo
 	if err := json.Unmarshal(plain, &friends); err != nil {
-		return nil, fmt.Errorf("zca: parse friends list: %w", err)
+		return nil, fmt.Errorf("zalo_personal: parse friends list: %w", err)
 	}
 	return friends, nil
 }
@@ -104,7 +104,7 @@ func FetchGroups(ctx context.Context, sess *Session) ([]GroupListInfo, error) {
 func fetchGroupIDs(ctx context.Context, sess *Session) (map[string]string, error) {
 	baseURL := getServiceURL(sess, "group_poll")
 	if baseURL == "" {
-		return nil, fmt.Errorf("zca: no group_poll service URL")
+		return nil, fmt.Errorf("zalo_personal: no group_poll service URL")
 	}
 
 	reqURL := makeURL(sess, baseURL+"/api/group/getlg/v4", nil, true)
@@ -117,16 +117,16 @@ func fetchGroupIDs(ctx context.Context, sess *Session) (map[string]string, error
 
 	resp, err := sess.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("zca: fetch group IDs: %w", err)
+		return nil, fmt.Errorf("zalo_personal: fetch group IDs: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var envelope Response[*string]
 	if err := readJSON(resp, &envelope); err != nil {
-		return nil, fmt.Errorf("zca: parse group IDs response: %w", err)
+		return nil, fmt.Errorf("zalo_personal: parse group IDs response: %w", err)
 	}
 	if envelope.ErrorCode != 0 {
-		return nil, fmt.Errorf("zca: group IDs error code %d: %s", envelope.ErrorCode, envelope.ErrorMessage)
+		return nil, fmt.Errorf("zalo_personal: group IDs error code %d: %s", envelope.ErrorCode, envelope.ErrorMessage)
 	}
 	if envelope.Data == nil {
 		return nil, nil
@@ -134,14 +134,14 @@ func fetchGroupIDs(ctx context.Context, sess *Session) (map[string]string, error
 
 	plain, err := decryptDataField(sess, *envelope.Data)
 	if err != nil {
-		return nil, fmt.Errorf("zca: decrypt group IDs: %w", err)
+		return nil, fmt.Errorf("zalo_personal: decrypt group IDs: %w", err)
 	}
 
 	var result struct {
 		GridVerMap map[string]string `json:"gridVerMap"`
 	}
 	if err := json.Unmarshal(plain, &result); err != nil {
-		return nil, fmt.Errorf("zca: parse group IDs: %w", err)
+		return nil, fmt.Errorf("zalo_personal: parse group IDs: %w", err)
 	}
 	return result.GridVerMap, nil
 }
@@ -150,7 +150,7 @@ func fetchGroupIDs(ctx context.Context, sess *Session) (map[string]string, error
 func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string]string) ([]GroupListInfo, error) {
 	baseURL := getServiceURL(sess, "group")
 	if baseURL == "" {
-		return nil, fmt.Errorf("zca: no group service URL")
+		return nil, fmt.Errorf("zalo_personal: no group service URL")
 	}
 
 	// Build payload with gridVerMap as JSON string
@@ -165,7 +165,7 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 
 	encData, err := encryptPayload(sess, payload)
 	if err != nil {
-		return nil, fmt.Errorf("zca: encrypt group details payload: %w", err)
+		return nil, fmt.Errorf("zalo_personal: encrypt group details payload: %w", err)
 	}
 
 	reqURL := makeURL(sess, baseURL+"/api/group/getmg-v2", nil, true)
@@ -179,16 +179,16 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 
 	resp, err := sess.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("zca: fetch group details: %w", err)
+		return nil, fmt.Errorf("zalo_personal: fetch group details: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var envelope Response[*string]
 	if err := readJSON(resp, &envelope); err != nil {
-		return nil, fmt.Errorf("zca: parse group details response: %w", err)
+		return nil, fmt.Errorf("zalo_personal: parse group details response: %w", err)
 	}
 	if envelope.ErrorCode != 0 {
-		return nil, fmt.Errorf("zca: group details error code %d: %s", envelope.ErrorCode, envelope.ErrorMessage)
+		return nil, fmt.Errorf("zalo_personal: group details error code %d: %s", envelope.ErrorCode, envelope.ErrorMessage)
 	}
 	if envelope.Data == nil {
 		return nil, nil
@@ -196,7 +196,7 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 
 	plain, err := decryptDataField(sess, *envelope.Data)
 	if err != nil {
-		return nil, fmt.Errorf("zca: decrypt group details: %w", err)
+		return nil, fmt.Errorf("zalo_personal: decrypt group details: %w", err)
 	}
 
 	var result struct {
@@ -207,7 +207,7 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 		} `json:"gridInfoMap"`
 	}
 	if err := json.Unmarshal(plain, &result); err != nil {
-		return nil, fmt.Errorf("zca: parse group details: %w", err)
+		return nil, fmt.Errorf("zalo_personal: parse group details: %w", err)
 	}
 
 	groups := make([]GroupListInfo, 0, len(result.GridInfoMap))
@@ -227,7 +227,7 @@ func fetchGroupDetails(ctx context.Context, sess *Session, gridVerMap map[string
 func decryptDataField(sess *Session, data string) ([]byte, error) {
 	key := SecretKey(sess.SecretKey).Bytes()
 	if key == nil {
-		return nil, fmt.Errorf("zca: invalid session secret key")
+		return nil, fmt.Errorf("zalo_personal: invalid session secret key")
 	}
 	unescaped, err := url.PathUnescape(data)
 	if err != nil {

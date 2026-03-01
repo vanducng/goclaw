@@ -45,7 +45,7 @@ func NewSession() *Session {
 			Timeout: 60 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= MaxRedirects {
-					return fmt.Errorf("zca: too many redirects")
+					return fmt.Errorf("zalo_personal: too many redirects")
 				}
 				return nil
 			},
@@ -167,14 +167,14 @@ func encryptParams(imei string, data map[string]any) (zcid, zcidExt string, resu
 	zcidData := fmt.Sprintf("%d,%s,%d", DefaultAPIType, imei, ts)
 	zcidRaw, err := EncodeAESCBC([]byte(DefaultZCIDKey), zcidData, true)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("zca: create zcid: %w", err)
+		return "", "", nil, fmt.Errorf("zalo_personal: create zcid: %w", err)
 	}
 	zcid = strings.ToUpper(zcidRaw)
 
 	// Derive encrypt key
 	encKey, err := deriveEncryptKey(zcidExt, zcid)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("zca: derive key: %w", err)
+		return "", "", nil, fmt.Errorf("zalo_personal: derive key: %w", err)
 	}
 
 	// Encrypt data
@@ -184,7 +184,7 @@ func encryptParams(imei string, data map[string]any) (zcid, zcidExt string, resu
 	}
 	encData, err := EncodeAESCBC([]byte(encKey), string(blob), false)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("zca: encrypt data: %w", err)
+		return "", "", nil, fmt.Errorf("zalo_personal: encrypt data: %w", err)
 	}
 
 	return zcid, zcidExt, &encryptResult{key: encKey, encData: encData}, nil
@@ -198,7 +198,7 @@ func deriveEncryptKey(ext, id string) (string, error) {
 	evenE, _ := processStr(nUpper)
 	evenI, oddI := processStr(id)
 	if len(evenE) == 0 || len(evenI) == 0 || len(oddI) == 0 {
-		return "", fmt.Errorf("zca: invalid key derivation params")
+		return "", fmt.Errorf("zalo_personal: invalid key derivation params")
 	}
 
 	var b strings.Builder

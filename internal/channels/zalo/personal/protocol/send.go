@@ -14,7 +14,7 @@ import (
 // threadID: user UID (DM) or group ID (group).
 func SendMessage(ctx context.Context, sess *Session, threadID string, threadType ThreadType, text string) (string, error) {
 	if text == "" {
-		return "", fmt.Errorf("zca: message text cannot be empty")
+		return "", fmt.Errorf("zalo_personal: message text cannot be empty")
 	}
 
 	serviceKey := "chat"
@@ -26,7 +26,7 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 
 	baseURL := getServiceURL(sess, serviceKey)
 	if baseURL == "" {
-		return "", fmt.Errorf("zca: no service URL for %s", serviceKey)
+		return "", fmt.Errorf("zalo_personal: no service URL for %s", serviceKey)
 	}
 
 	// Build payload
@@ -46,7 +46,7 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 	// Encrypt payload with session secret key
 	encData, err := encryptPayload(sess, payload)
 	if err != nil {
-		return "", fmt.Errorf("zca: encrypt send payload: %w", err)
+		return "", fmt.Errorf("zalo_personal: encrypt send payload: %w", err)
 	}
 
 	// Build URL with standard params
@@ -62,13 +62,13 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 
 	resp, err := sess.Client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("zca: send message: %w", err)
+		return "", fmt.Errorf("zalo_personal: send message: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("zca: read send response: %w", err)
+		return "", fmt.Errorf("zalo_personal: read send response: %w", err)
 	}
 	var result struct {
 		ErrorCode int `json:"error_code"`
@@ -77,10 +77,10 @@ func SendMessage(ctx context.Context, sess *Session, threadID string, threadType
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("zca: parse send response: %w", err)
+		return "", fmt.Errorf("zalo_personal: parse send response: %w", err)
 	}
 	if result.ErrorCode != 0 {
-		return "", fmt.Errorf("zca: send error code %d", result.ErrorCode)
+		return "", fmt.Errorf("zalo_personal: send error code %d", result.ErrorCode)
 	}
 
 	return result.Data.MsgID.String(), nil

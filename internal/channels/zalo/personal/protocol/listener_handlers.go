@@ -26,7 +26,7 @@ func (ln *Listener) handleUserMessages(ctx context.Context, data string, encType
 
 	payload, err := ln.decryptEventData(data, encType, ck)
 	if err != nil {
-		emit(ctx, ln.errorCh, fmt.Errorf("zca: decrypt user msg: %w", err))
+		emit(ctx, ln.errorCh, fmt.Errorf("zalo_personal: decrypt user msg: %w", err))
 		return
 	}
 
@@ -36,7 +36,7 @@ func (ln *Listener) handleUserMessages(ctx context.Context, data string, encType
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
-		emit(ctx, ln.errorCh, fmt.Errorf("zca: parse user msgs: %w", err))
+		emit(ctx, ln.errorCh, fmt.Errorf("zalo_personal: parse user msgs: %w", err))
 		return
 	}
 
@@ -60,7 +60,7 @@ func (ln *Listener) handleGroupMessages(ctx context.Context, data string, encTyp
 
 	payload, err := ln.decryptEventData(data, encType, ck)
 	if err != nil {
-		emit(ctx, ln.errorCh, fmt.Errorf("zca: decrypt group msg: %w", err))
+		emit(ctx, ln.errorCh, fmt.Errorf("zalo_personal: decrypt group msg: %w", err))
 		return
 	}
 
@@ -70,7 +70,7 @@ func (ln *Listener) handleGroupMessages(ctx context.Context, data string, encTyp
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
-		emit(ctx, ln.errorCh, fmt.Errorf("zca: parse group msgs: %w", err))
+		emit(ctx, ln.errorCh, fmt.Errorf("zalo_personal: parse group msgs: %w", err))
 		return
 	}
 
