@@ -4,41 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
-
-// wsJar wraps http.CookieJar converting wss:// → https:// (ws:// → http://)
-// before delegating. gorilla/websocket already does this conversion internally,
-// so this wrapper acts as a safety net for any direct calls and documents intent.
-type wsJar struct {
-	http.CookieJar
-}
-
-func (j *wsJar) Cookies(u *url.URL) []*http.Cookie {
-	u2 := *u
-	switch u2.Scheme {
-	case "wss":
-		u2.Scheme = "https"
-	case "ws":
-		u2.Scheme = "http"
-	}
-	return j.CookieJar.Cookies(&u2)
-}
-
-func (j *wsJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
-	u2 := *u
-	switch u2.Scheme {
-	case "wss":
-		u2.Scheme = "https"
-	case "ws":
-		u2.Scheme = "http"
-	}
-	j.CookieJar.SetCookies(&u2, cookies)
-}
 
 // WSClient wraps gorilla/websocket with a thread-safe write method.
 type WSClient struct {
@@ -47,13 +20,18 @@ type WSClient struct {
 }
 
 // DialWS connects to a WebSocket endpoint using gorilla/websocket.
-// Wraps the cookie jar to fix Go's cookiejar not returning cookies for wss:// URLs.
+// Manually injects cookies from the jar using https:// scheme to bypass
+// Go's cookiejar domain-matching limitations with wss:// URLs and host-only cookies.
 func DialWS(ctx context.Context, wsURL string, headers http.Header, jar http.CookieJar) (*WSClient, error) {
 	dialer := websocket.Dialer{
 		EnableCompression: true,
 	}
+	// Don't pass jar to gorilla — we inject cookies manually below.
+	// This avoids issues with host-only cookies not matching WS subdomains.
+
+	// Inject cookies from chat.zalo.me base domain + the WS host itself.
 	if jar != nil {
-		dialer.Jar = &wsJar{jar}
+		injectCookies(headers, jar, wsURL)
 	}
 
 	conn, _, err := dialer.DialContext(ctx, wsURL, headers)
@@ -62,6 +40,43 @@ func DialWS(ctx context.Context, wsURL string, headers http.Header, jar http.Coo
 	}
 	conn.SetReadLimit(1 << 20) // 1MB
 	return &WSClient{conn: conn}, nil
+}
+
+// injectCookies merges cookies from the base domain (chat.zalo.me) and the
+// WS host into the request headers. Deduplicates by name so the most specific
+// (WS host) cookie wins.
+func injectCookies(headers http.Header, jar http.CookieJar, wsURL string) {
+	baseURL := &url.URL{Scheme: "https", Host: "chat.zalo.me", Path: "/"}
+
+	// Collect from base domain first, then WS host (WS host overrides).
+	seen := make(map[string]string, 4)
+	for _, c := range jar.Cookies(baseURL) {
+		seen[c.Name] = c.Name + "=" + c.Value
+	}
+	// Also try the exact WS host with https:// scheme
+	if u, err := url.Parse(strings.Replace(wsURL, "wss://", "https://", 1)); err == nil {
+		for _, c := range jar.Cookies(u) {
+			seen[c.Name] = c.Name + "=" + c.Value
+		}
+	}
+
+	if len(seen) == 0 {
+		return
+	}
+
+	parts := make([]string, 0, len(seen))
+	for _, v := range seen {
+		parts = append(parts, v)
+	}
+	cookieHeader := strings.Join(parts, "; ")
+
+	// Merge with any existing Cookie header
+	if existing := headers.Get("Cookie"); existing != "" {
+		cookieHeader = existing + "; " + cookieHeader
+	}
+	headers.Set("Cookie", cookieHeader)
+
+	slog.Info("zalo ws cookies injected", "count", len(seen), "url", wsURL)
 }
 
 // ReadMessage reads the next WebSocket message. Blocks until a message
