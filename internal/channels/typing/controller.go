@@ -184,12 +184,17 @@ func (c *Controller) fireStop() {
 
 // keepaliveLoop periodically re-sends the typing indicator.
 func (c *Controller) keepaliveLoop() {
+	// Capture channel locally to avoid racing with forceStop's nil assignment.
+	c.mu.Lock()
+	done := c.keepaliveDone
+	c.mu.Unlock()
+
 	ticker := time.NewTicker(c.keepaliveInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-c.keepaliveDone:
+		case <-done:
 			return
 		case <-ticker.C:
 			c.mu.Lock()
