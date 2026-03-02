@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X github.com/nextlevelbuilder/goclaw/cmd.Version=$(VERSION)
 BINARY   = goclaw
 
-.PHONY: build run clean version up down logs
+.PHONY: build run clean version up down logs test vet lint-web ci setup
 
 build:
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
@@ -26,3 +26,18 @@ down:
 
 logs:
 	$(COMPOSE) logs -f goclaw
+
+test:
+	go test -race ./...
+
+vet:
+	go vet ./...
+
+lint-web:
+	cd ui/web && pnpm install --frozen-lockfile && pnpm build
+
+setup:
+	go mod download
+	cd ui/web && pnpm install --frozen-lockfile
+
+ci: build test vet lint-web
