@@ -23,15 +23,8 @@ import { slugify, isValidSlug } from "@/lib/slug";
 import { credentialsSchema, configSchema, wizardConfig } from "./channel-schemas";
 import { ChannelFields } from "./channel-fields";
 import { wizardAuthSteps, wizardConfigSteps, wizardEditConfigs } from "./channel-wizard-registry";
-
-const CHANNEL_TYPES = [
-  { value: "telegram", label: "Telegram" },
-  { value: "discord", label: "Discord" },
-  { value: "feishu", label: "Feishu / Lark" },
-  { value: "zalo_oa", label: "Zalo OA" },
-  { value: "zalo_personal", label: "Zalo Personal" },
-  { value: "whatsapp", label: "WhatsApp" },
-] as const;
+import { TelegramGroupOverrides } from "./telegram-group-overrides";
+import { CHANNEL_TYPES } from "@/constants/channels";
 
 type WizardStep = "form" | "auth" | "config";
 
@@ -310,6 +303,19 @@ export function ChannelInstanceFormDialog({
                   <ChannelFields fields={formCfgFields} values={configValues} onChange={handleConfigChange} idPrefix="ci-cfg" />
                   {instance && EditConfig && <EditConfig instance={instance} configValues={configValues} onConfigChange={handleConfigChange} />}
                 </fieldset>
+              )}
+
+              {/* Telegram group/topic overrides */}
+              {channelType === "telegram" && (
+                <TelegramGroupOverrides
+                  groups={(configValues.groups as Record<string, Record<string, unknown>>) ?? {}}
+                  onChange={(groups) => {
+                    setConfigValues((prev) => ({
+                      ...prev,
+                      groups: Object.keys(groups).length > 0 ? groups : undefined,
+                    }));
+                  }}
+                />
               )}
 
               <div className="flex items-center gap-2">

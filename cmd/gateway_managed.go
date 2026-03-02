@@ -25,6 +25,8 @@ import (
 // agent resolver (lazy-creates Loops from DB), virtual FS interceptors, memory tools,
 // and cache invalidation event subscribers.
 // PG store creation and tracing are handled in gateway.go before this is called.
+// Returns the ContextFileInterceptor so callers can pass it to AgentsMethods
+// for immediate cache invalidation on agents.files.set.
 func wireManagedExtras(
 	stores *store.Stores,
 	agentRouter *agent.Router,
@@ -41,17 +43,23 @@ func wireManagedExtras(
 	appCfg *config.Config,
 	sandboxMgr sandbox.Manager,
 	dynamicLoader *tools.DynamicToolLoader,
-) {
+) *tools.ContextFileInterceptor {
 	// 1. Context file interceptor (created before resolver so callbacks can reference it)
 	var contextFileInterceptor *tools.ContextFileInterceptor
 	if stores.Agents != nil {
 		contextFileInterceptor = tools.NewContextFileInterceptor(stores.Agents, workspace)
 	}
 
+	// 1b. Group writer cache (wraps ListGroupFileWriters with TTL cache)
+	var groupWriterCache *store.GroupWriterCache
+	if stores.Agents != nil {
+		groupWriterCache = store.NewGroupWriterCache(stores.Agents)
+	}
+
 	// 2. User seeding callback: seeds per-user context files on first chat
 	var ensureUserFiles agent.EnsureUserFilesFunc
 	if stores.Agents != nil {
-		ensureUserFiles = buildEnsureUserFiles(stores.Agents)
+		ensureUserFiles = buildEnsureUserFiles(stores.Agents, msgBus)
 	}
 
 	// 3. Context file loader callback: loads per-user context files dynamically
@@ -98,6 +106,7 @@ func wireManagedExtras(
 		AgentLinkStore:         stores.AgentLinks,
 		TeamStore:              stores.Teams,
 		BuiltinToolStore:       stores.BuiltinTools,
+		GroupWriterCache:       groupWriterCache,
 		OnEvent: func(event agent.AgentEvent) {
 			msgBus.Broadcast(bus.Event{
 				Name:    protocol.EventAgent,
@@ -141,6 +150,20 @@ func wireManagedExtras(
 		}
 	}
 
+	// Wire group writer cache for permission checks (managed mode only)
+	if groupWriterCache != nil {
+		for _, toolName := range []string{"read_file", "write_file", "edit", "cron"} {
+			if t, ok := toolsReg.Get(toolName); ok {
+				if gwa, ok := t.(tools.GroupWriterAware); ok {
+					gwa.SetGroupWriterCache(groupWriterCache)
+				}
+			}
+		}
+		if contextFileInterceptor != nil {
+			contextFileInterceptor.SetGroupWriterCache(groupWriterCache)
+		}
+	}
+
 	// Wire memory store on memory tools (search + get)
 	if stores.Memory != nil {
 		if searchTool, ok := toolsReg.Get("memory_search"); ok {
@@ -160,7 +183,7 @@ func wireManagedExtras(
 
 	// Context file cache: invalidate on agent/context data changes
 	if contextFileInterceptor != nil {
-		msgBus.Subscribe("cache:bootstrap", func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheBootstrap, func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
@@ -168,7 +191,7 @@ func wireManagedExtras(
 			if !ok {
 				return
 			}
-			if payload.Kind == "bootstrap" || payload.Kind == "agent" {
+			if payload.Kind == bus.CacheKindBootstrap || payload.Kind == bus.CacheKindAgent {
 				if payload.Key != "" {
 					agentID, err := uuid.Parse(payload.Key)
 					if err == nil {
@@ -182,12 +205,12 @@ func wireManagedExtras(
 	}
 
 	// Agent router: invalidate Loop cache on agent config changes
-	msgBus.Subscribe("cache:agent", func(event bus.Event) {
+	msgBus.Subscribe(bus.TopicCacheAgent, func(event bus.Event) {
 		if event.Name != protocol.EventCacheInvalidate {
 			return
 		}
 		payload, ok := event.Payload.(bus.CacheInvalidatePayload)
-		if !ok || payload.Kind != "agent" {
+		if !ok || payload.Kind != bus.CacheKindAgent {
 			return
 		}
 		if payload.Key != "" {
@@ -197,12 +220,12 @@ func wireManagedExtras(
 
 	// Skills cache: bump version on skill changes
 	if stores.Skills != nil {
-		msgBus.Subscribe("cache:skills", func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheSkills, func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
 			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
-			if !ok || payload.Kind != "skills" {
+			if !ok || payload.Kind != bus.CacheKindSkills {
 				return
 			}
 			stores.Skills.BumpVersion()
@@ -211,12 +234,12 @@ func wireManagedExtras(
 
 	// Cron cache: invalidate job cache on cron changes
 	if ci, ok := stores.Cron.(store.CacheInvalidatable); ok {
-		msgBus.Subscribe("cache:cron", func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheCron, func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
 			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
-			if !ok || payload.Kind != "cron" {
+			if !ok || payload.Kind != bus.CacheKindCron {
 				return
 			}
 			ci.InvalidateCache()
@@ -225,12 +248,12 @@ func wireManagedExtras(
 
 	// Custom tools cache: reload global tools on create/update/delete
 	if dynamicLoader != nil {
-		msgBus.Subscribe("cache:custom_tools", func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheCustomTools, func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
 			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
-			if !ok || payload.Kind != "custom_tools" {
+			if !ok || payload.Kind != bus.CacheKindCustomTools {
 				return
 			}
 			dynamicLoader.ReloadGlobal(context.Background(), toolsReg)
@@ -241,7 +264,7 @@ func wireManagedExtras(
 
 	// Builtin tools cache: re-apply disables on settings/enabled changes
 	if stores.BuiltinTools != nil {
-		msgBus.Subscribe("cache:builtin_tools", func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheBuiltinTools, func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
@@ -278,8 +301,9 @@ func wireManagedExtras(
 				return nil, err
 			}
 			dr := &tools.DelegateRunResult{
-				Content:    result.Content,
-				Iterations: result.Iterations,
+				Content:      result.Content,
+				Iterations:   result.Iterations,
+				Deliverables: result.Deliverables,
 			}
 			for _, m := range result.Media {
 				dr.MediaPaths = append(dr.MediaPaths, m.Path)
@@ -350,10 +374,55 @@ func wireManagedExtras(
 		teamMgr := tools.NewTeamToolManager(stores.Teams, stores.Agents, msgBus)
 		toolsReg.Register(tools.NewTeamTasksTool(teamMgr))
 		toolsReg.Register(tools.NewTeamMessageTool(teamMgr))
+
+		// Team cache invalidation via pub/sub
+		msgBus.Subscribe(bus.TopicCacheTeam, func(event bus.Event) {
+			if event.Name != protocol.EventCacheInvalidate {
+				return
+			}
+			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
+			if !ok || payload.Kind != bus.CacheKindTeam {
+				return
+			}
+			teamMgr.InvalidateTeam()
+		})
 		slog.Info("managed mode: team tools registered")
 	}
 
+	// User workspace cache: invalidate per-user workspace path on profile changes
+	msgBus.Subscribe(bus.TopicCacheUserWorkspace, func(event bus.Event) {
+		if event.Name != protocol.EventCacheInvalidate {
+			return
+		}
+		payload, ok := event.Payload.(bus.CacheInvalidatePayload)
+		if !ok || payload.Kind != bus.CacheKindUserWorkspace {
+			return
+		}
+		if payload.Key != "" {
+			agentRouter.InvalidateUserWorkspace(payload.Key)
+		}
+	})
+
+	// Group writer cache: invalidate on writer list changes
+	if groupWriterCache != nil {
+		msgBus.Subscribe(bus.TopicCacheGroupFileWriters, func(event bus.Event) {
+			if event.Name != protocol.EventCacheInvalidate {
+				return
+			}
+			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
+			if !ok || payload.Kind != bus.CacheKindGroupFileWriters {
+				return
+			}
+			if payload.Key != "" {
+				groupWriterCache.Invalidate(payload.Key)
+			} else {
+				groupWriterCache.InvalidateAll()
+			}
+		})
+	}
+
 	slog.Info("managed mode: resolver + interceptors + cache subscribers wired")
+	return contextFileInterceptor
 }
 
 // wireManagedHTTP creates managed-mode HTTP handlers (agents + skills + traces + MCP + custom tools + channel instances + providers + delegations + builtin tools).
