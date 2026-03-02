@@ -89,7 +89,14 @@ export function ChannelInstanceFormDialog({
       setChannelType(instance?.channel_type ?? "telegram");
       setAgentId(instance?.agent_id ?? (agents[0]?.id ?? ""));
       setCredsValues({});
-      setConfigValues(instance?.config ? { ...instance.config } : {});
+      // Merge schema defaults into config so select fields persist their defaults.
+      const ct = instance?.channel_type ?? "telegram";
+      const schema = configSchema[ct] ?? [];
+      const defaults: Record<string, unknown> = {};
+      for (const f of schema) {
+        if (f.defaultValue !== undefined) defaults[f.key] = f.defaultValue;
+      }
+      setConfigValues({ ...defaults, ...(instance?.config ?? {}) });
       setEnabled(instance?.enabled ?? true);
       setError("");
       setStep("form");

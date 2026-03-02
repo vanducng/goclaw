@@ -53,15 +53,13 @@ type Channel struct {
 func New(cfg config.ZaloPersonalConfig, msgBus *bus.MessageBus, pairingSvc store.PairingStore) (*Channel, error) {
 	base := channels.NewBaseChannel("zalo_personal", msgBus, cfg.AllowFrom)
 
-	dmPolicy := cfg.DMPolicy
-	if dmPolicy == "" {
-		dmPolicy = "allowlist"
+	if cfg.DMPolicy == "" {
+		cfg.DMPolicy = "allowlist"
 	}
-	groupPolicy := cfg.GroupPolicy
-	if groupPolicy == "" {
-		groupPolicy = "allowlist"
+	if cfg.GroupPolicy == "" {
+		cfg.GroupPolicy = "allowlist"
 	}
-	base.ValidatePolicy(dmPolicy, groupPolicy)
+	base.ValidatePolicy(cfg.DMPolicy, cfg.GroupPolicy)
 
 	requireMention := true
 	if cfg.RequireMention != nil {

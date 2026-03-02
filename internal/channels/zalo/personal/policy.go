@@ -15,7 +15,7 @@ const pairingDebounce = 60 * time.Second
 func (c *Channel) checkDMPolicy(senderID, chatID string) bool {
 	dmPolicy := c.config.DMPolicy
 	if dmPolicy == "" {
-		dmPolicy = "pairing"
+		dmPolicy = "allowlist"
 	}
 
 	switch dmPolicy {
@@ -86,7 +86,7 @@ func (c *Channel) sendPairingReply(senderID, chatID string) {
 func (c *Channel) checkGroupPolicy(senderID, groupID string, mentions []*protocol.TMention) bool {
 	groupPolicy := c.config.GroupPolicy
 	if groupPolicy == "" {
-		groupPolicy = "open"
+		groupPolicy = "allowlist"
 	}
 
 	switch groupPolicy {
