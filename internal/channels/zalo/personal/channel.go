@@ -18,6 +18,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels/zalo/personal/protocol"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
 const (
@@ -36,6 +37,7 @@ type Channel struct {
 	pairingDebounce sync.Map // senderID -> time.Time
 	typingCtrls     sync.Map // threadID → *typing.Controller
 
+	mu       sync.RWMutex // protects sess and listener
 	sess     *protocol.Session
 	listener *protocol.Listener
 
@@ -75,6 +77,20 @@ func New(cfg config.ZaloPersonalConfig, msgBus *bus.MessageBus, pairingSvc store
 	}, nil
 }
 
+// session returns the current session snapshot (thread-safe).
+func (c *Channel) session() *protocol.Session {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.sess
+}
+
+// getListener returns the current listener snapshot (thread-safe).
+func (c *Channel) getListener() *protocol.Listener {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.listener
+}
+
 // Start authenticates and begins listening for Zalo messages.
 func (c *Channel) Start(ctx context.Context) error {
 	slog.Warn("security.unofficial_api",
@@ -86,19 +102,21 @@ func (c *Channel) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("zalo_personal auth: %w", err)
 	}
-	c.sess = sess
-
-	slog.Info("zalo_personal connected", "uid", sess.UID)
 
 	ln, err := protocol.NewListener(sess)
 	if err != nil {
 		return fmt.Errorf("zalo_personal listener: %w", err)
 	}
-	c.listener = ln
-
 	if err := ln.Start(ctx); err != nil {
 		return fmt.Errorf("zalo_personal listener start: %w", err)
 	}
+
+	c.mu.Lock()
+	c.sess = sess
+	c.listener = ln
+	c.mu.Unlock()
+
+	slog.Info("zalo_personal connected", "uid", sess.UID)
 
 	c.SetRunning(true)
 	go c.listenLoop(ctx)
@@ -116,8 +134,8 @@ func (c *Channel) Stop(_ context.Context) error {
 		c.typingCtrls.Delete(key)
 		return true
 	})
-	if c.listener != nil {
-		c.listener.Stop()
+	if ln := c.getListener(); ln != nil {
+		ln.Stop()
 	}
 	c.SetRunning(false)
 	return nil
@@ -125,7 +143,8 @@ func (c *Channel) Stop(_ context.Context) error {
 
 // Send delivers an outbound message to a Zalo chat.
 func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
-	if !c.IsRunning() || c.sess == nil {
+	sess := c.session()
+	if !c.IsRunning() || sess == nil {
 		return fmt.Errorf("zalo_personal channel not running")
 	}
 
@@ -141,7 +160,7 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 		}
 	}
 
-	return c.sendChunkedText(ctx, msg.ChatID, threadType, msg.Content)
+	return c.sendChunkedText(ctx, sess, msg.ChatID, threadType, msg.Content)
 }
 
 func (c *Channel) listenLoop(ctx context.Context) {
@@ -157,6 +176,10 @@ func (c *Channel) listenLoop(ctx context.Context) {
 // Returns true if the channel restarted and the outer loop should continue,
 // false if the channel should stop permanently.
 func (c *Channel) runListenerLoop(ctx context.Context) bool {
+	ln := c.getListener()
+	if ln == nil {
+		return false
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -166,16 +189,16 @@ func (c *Channel) runListenerLoop(ctx context.Context) bool {
 			slog.Info("zalo_personal listener loop stopped")
 			return false
 
-		case msg, ok := <-c.listener.Messages():
+		case msg, ok := <-ln.Messages():
 			if !ok {
 				return false
 			}
 			c.handleMessage(msg)
 
-		case ci := <-c.listener.Disconnected():
+		case ci := <-ln.Disconnected():
 			slog.Warn("zalo_personal disconnected", "code", ci.Code, "reason", ci.Reason)
 
-		case ci := <-c.listener.Closed():
+		case ci := <-ln.Closed():
 			slog.Warn("zalo_personal connection closed", "code", ci.Code, "reason", ci.Reason)
 
 			// Code 3000: wait 60s before retry (duplicate session may be transient)
@@ -192,13 +215,16 @@ func (c *Channel) runListenerLoop(ctx context.Context) bool {
 
 			return c.restartWithBackoff(ctx)
 
-		case err := <-c.listener.Errors():
+		case err := <-ln.Errors():
 			slog.Warn("zalo_personal listener error", "error", err)
 		}
 	}
 }
 
 // restartWithBackoff attempts to restart the channel with exponential backoff.
+// This is the channel-level retry layer for auth/session failures. The listener
+// has its own internal retry for transient WS disconnects (endpoint rotation).
+// When the listener exhausts its retries, it emits to closedCh which triggers this.
 // Returns true if restart succeeded and the listen loop should continue.
 func (c *Channel) restartWithBackoff(ctx context.Context) bool {
 	for attempt := range maxChannelRestarts {
@@ -224,27 +250,29 @@ func (c *Channel) restartWithBackoff(ctx context.Context) bool {
 }
 
 // restart performs a full re-authentication and listener restart.
+// Called from the listenLoop goroutine when the listener exhausts retries.
 func (c *Channel) restart(ctx context.Context) error {
-	if c.listener != nil {
-		c.listener.Stop()
+	if ln := c.getListener(); ln != nil {
+		ln.Stop()
 	}
 
 	sess, err := c.authenticate(ctx)
 	if err != nil {
 		return fmt.Errorf("re-auth: %w", err)
 	}
-	c.sess = sess
 
 	ln, err := protocol.NewListener(sess)
 	if err != nil {
 		return fmt.Errorf("new listener: %w", err)
 	}
-
 	if err := ln.Start(ctx); err != nil {
 		return fmt.Errorf("start listener: %w", err)
 	}
 
+	c.mu.Lock()
+	c.sess = sess
 	c.listener = ln
+	c.mu.Unlock()
 	return nil
 }
 
@@ -321,7 +349,7 @@ func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 // startTyping starts a typing indicator with keepalive for the given thread.
 // Zalo typing expires after ~5s, so keepalive fires every 3s.
 func (c *Channel) startTyping(threadID string, threadType protocol.ThreadType) {
-	sess := c.sess // snapshot to avoid stale-session reads if restart() replaces c.sess
+	sess := c.session()
 	ctrl := typing.New(typing.Options{
 		MaxDuration:       60 * time.Second,
 		KeepaliveInterval: 4 * time.Second,
@@ -352,7 +380,7 @@ func extractContentAndMedia(content protocol.Content) (string, []string) {
 	}
 	var media []string
 	if att.IsImage() {
-		if path, err := downloadFile(att.Href); err != nil {
+		if path, err := downloadFile(context.Background(), att.Href); err != nil {
 			slog.Warn("zalo_personal: failed to download image", "url", att.Href, "error", err)
 		} else {
 			media = []string{path}
@@ -364,8 +392,18 @@ func extractContentAndMedia(content protocol.Content) (string, []string) {
 const maxImageBytes = 10 * 1024 * 1024 // 10MB
 
 // downloadFile downloads an image URL to a temp file and returns the local path.
-func downloadFile(imageURL string) (string, error) {
-	resp, err := http.Get(imageURL)
+// Validates against SSRF and enforces HTTPS-only, timeout, and size limits.
+func downloadFile(ctx context.Context, imageURL string) (string, error) {
+	if err := tools.CheckSSRF(imageURL); err != nil {
+		return "", fmt.Errorf("ssrf check: %w", err)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("download: %w", err)
 	}
@@ -404,7 +442,7 @@ func downloadFile(imageURL string) (string, error) {
 	return tmpFile.Name(), nil
 }
 
-func (c *Channel) sendChunkedText(ctx context.Context, chatID string, threadType protocol.ThreadType, text string) error {
+func (c *Channel) sendChunkedText(ctx context.Context, sess *protocol.Session, chatID string, threadType protocol.ThreadType, text string) error {
 	for len(text) > 0 {
 		chunk := text
 		if len(chunk) > maxTextLength {
@@ -418,7 +456,7 @@ func (c *Channel) sendChunkedText(ctx context.Context, chatID string, threadType
 			text = ""
 		}
 
-		if _, err := protocol.SendMessage(ctx, c.sess, chatID, threadType, chunk); err != nil {
+		if _, err := protocol.SendMessage(ctx, sess, chatID, threadType, chunk); err != nil {
 			return err
 		}
 	}

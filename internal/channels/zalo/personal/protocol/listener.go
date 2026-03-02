@@ -31,6 +31,8 @@ type Listener struct {
 	client      *WSClient
 	cipherKey   string
 	connectedAt time.Time
+	stopped     bool         // prevents reconnect after Stop()
+	reconnTimer *time.Timer  // pending reconnect timer, cancelled on Stop()
 
 	retryStates map[string]*retryState
 
@@ -90,6 +92,7 @@ func (ln *Listener) Start(ctx context.Context) error {
 		return fmt.Errorf("zalo_personal: listener already started")
 	}
 
+	ln.stopped = false
 	lctx, cancel := context.WithCancel(ctx)
 	ln.cancel = cancel
 
@@ -110,6 +113,11 @@ func (ln *Listener) Start(ctx context.Context) error {
 
 	slog.Debug("zalo websocket connected", "url", ln.wsURL)
 
+	// Set initial read deadline for the cipher key handshake message.
+	// Without this, ReadMessage blocks indefinitely if the server never responds.
+	// The deadline is cleared once the ping loop starts (cipher key received).
+	client.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
 	ln.client = client
 	ln.connectedAt = time.Now()
 	ln.wg.Add(1)
@@ -120,10 +128,16 @@ func (ln *Listener) Start(ctx context.Context) error {
 // Stop gracefully closes the WebSocket connection and cancels any pending reconnect.
 func (ln *Listener) Stop() {
 	ln.mu.Lock()
+	ln.stopped = true
 	client := ln.client
 	cancel := ln.cancel
+	timer := ln.reconnTimer
+	ln.reconnTimer = nil
 	ln.mu.Unlock()
 
+	if timer != nil {
+		timer.Stop()
+	}
 	// Always cancel context to prevent pending reconnect timers from firing.
 	if cancel != nil {
 		cancel()
@@ -233,6 +247,10 @@ func (ln *Listener) handleCipherKey(ctx context.Context, key *string) {
 	}
 	ln.mu.Lock()
 	ln.cipherKey = *key
+	// Clear initial handshake deadline; ping loop manages deadlines from here.
+	if ln.client != nil {
+		ln.client.conn.SetReadDeadline(time.Time{})
+	}
 	ln.mu.Unlock()
 
 	// Start ping loop

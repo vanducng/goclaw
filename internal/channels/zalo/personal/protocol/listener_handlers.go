@@ -193,6 +193,12 @@ func (ln *Listener) sendPing(ctx context.Context) {
 }
 
 // --- Reconnect ---
+// Two reconnect layers:
+// 1. Listener-level (here): retries transient WS disconnects with endpoint rotation.
+//    Controlled by server-provided retry config per close code.
+// 2. Channel-level (channel.go restartWithBackoff): full re-auth when listener gives up.
+//    Triggers when listener emits to closedCh after exhausting retries.
+// The stopped flag prevents zombie reconnects after Stop() is called.
 
 const stableThreshold = 60 * time.Second
 
@@ -221,8 +227,13 @@ func (ln *Listener) handleDisconnect(ctx context.Context, ci CloseInfo) {
 		return
 	}
 
-	time.AfterFunc(time.Duration(delay)*time.Millisecond, func() {
-		if ctx.Err() != nil {
+	// Store timer so Stop() can cancel it to prevent zombie reconnects.
+	ln.mu.Lock()
+	ln.reconnTimer = time.AfterFunc(time.Duration(delay)*time.Millisecond, func() {
+		ln.mu.RLock()
+		stopped := ln.stopped
+		ln.mu.RUnlock()
+		if stopped || ctx.Err() != nil {
 			return
 		}
 		// Rotate endpoint if applicable
@@ -231,6 +242,7 @@ func (ln *Listener) handleDisconnect(ctx context.Context, ci CloseInfo) {
 			ln.emitClosed(ci)
 		}
 	})
+	ln.mu.Unlock()
 }
 
 func (ln *Listener) reset() {

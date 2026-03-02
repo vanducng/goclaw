@@ -67,9 +67,9 @@ func (m *QRMethods) runQRFlow(ctx context.Context, client *gateway.Client, insta
 	defer m.activeSessions.Delete(instanceIDStr)
 
 	sess := protocol.NewSession()
-	// LoginQR has internal 100s timeout per QR code. Use 2m as outer bound
-	// to ensure cleanup even if r.Context() doesn't cancel on WS disconnect.
-	qrCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	// LoginQR has internal 100s timeout per QR code. Use 2m as outer bound.
+	// Derived from parent ctx so QR flow cancels when the WS client disconnects.
+	qrCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	cred, err := protocol.LoginQR(qrCtx, sess, func(qrPNG []byte) {

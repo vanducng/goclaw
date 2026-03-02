@@ -79,8 +79,11 @@ func injectCookies(headers http.Header, jar http.CookieJar, wsURL string) {
 	slog.Info("zalo ws cookies injected", "count", len(seen), "url", wsURL)
 }
 
-// ReadMessage reads the next WebSocket message. Blocks until a message
-// arrives, the context is cancelled, or the connection is closed.
+// ReadMessage reads the next WebSocket message. Blocks until a message arrives
+// or the connection is closed. NOTE: gorilla/websocket ReadMessage is blocking
+// and does not observe ctx. Cancellation works indirectly: Stop() closes the
+// connection which unblocks ReadMessage with an error. The listener applies
+// read deadlines via conn.SetReadDeadline for silent disconnect detection.
 func (c *WSClient) ReadMessage(ctx context.Context) ([]byte, error) {
 	_, data, err := c.conn.ReadMessage()
 	return data, err
@@ -96,12 +99,12 @@ func (c *WSClient) WriteMessage(ctx context.Context, data []byte) error {
 // Close sends a close frame and shuts down the connection.
 func (c *WSClient) Close(code int, reason string) {
 	c.mu.Lock()
-	c.conn.WriteMessage(
+	defer c.mu.Unlock()
+	_ = c.conn.WriteMessage(
 		websocket.CloseMessage,
 		websocket.FormatCloseMessage(code, reason),
 	)
 	c.conn.Close()
-	c.mu.Unlock()
 }
 
 // parseWSCloseInfo extracts close code and reason from a gorilla/websocket error.
