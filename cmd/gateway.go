@@ -474,8 +474,11 @@ func runGateway() {
 	toolsReg.Register(skillSearchTool)
 	slog.Info("skill_search tool registered", "skills", len(skillsLoader.ListSkills()))
 
-	// Managed mode: wire embedding-based skill search
+	// Managed mode: wire embedding-based skill search + per-agent access filtering
 	if managedStores != nil && managedStores.Skills != nil {
+		if sas, ok := managedStores.Skills.(store.SkillAccessStore); ok {
+			skillSearchTool.SetSkillAccessStore(sas)
+		}
 		if pgSkills, ok := managedStores.Skills.(*pg.PGSkillStore); ok {
 			memCfg := cfg.Agents.Defaults.Memory
 			if embProvider := resolveEmbeddingProvider(cfg, memCfg); embProvider != nil {
@@ -511,13 +514,17 @@ func runGateway() {
 	slog.Info("session + message tools registered")
 
 	// Allow read_file to access skills directories (outside workspace).
-	// Skills can live in ~/.goclaw/skills/, ~/.agents/skills/, etc.
+	// Skills can live in ~/.goclaw/skills/, ~/.agents/skills/, ~/.goclaw/skills-store/, etc.
 	homeDir, _ := os.UserHomeDir()
 	if readTool, ok := toolsReg.Get("read_file"); ok {
 		if pa, ok := readTool.(tools.PathAllowable); ok {
 			pa.AllowPaths(globalSkillsDir)
 			if homeDir != "" {
 				pa.AllowPaths(filepath.Join(homeDir, ".agents", "skills"))
+			}
+			// Managed mode: also allow the skills store directory (uploaded skill content).
+			if managedStores != nil && managedStores.Skills != nil {
+				pa.AllowPaths(managedStores.Skills.Dirs()...)
 			}
 		}
 	}
@@ -945,6 +952,14 @@ func runGateway() {
 	// so the same routes are served on both the main listener and Tailscale.
 	// Compiled via build tags: `go build -tags tsnet` to enable.
 	mux := server.BuildMux()
+
+	// Mount channel webhook handlers on the main mux (e.g. Feishu /feishu/events).
+	// This allows webhook-based channels to share the main server port.
+	for _, route := range channelMgr.WebhookHandlers() {
+		mux.Handle(route.Path, route.Handler)
+		slog.Info("webhook route mounted on gateway", "path", route.Path)
+	}
+
 	tsCleanup := initTailscale(ctx, cfg, mux)
 	if tsCleanup != nil {
 		defer tsCleanup()
