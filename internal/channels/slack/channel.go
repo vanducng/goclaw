@@ -289,17 +289,22 @@ func (c *Channel) Stop(_ context.Context) error {
 		c.cancelFn()
 	}
 
-	// Cancel all pending debounce timers
+	// Flush all pending debounce entries before shutdown
 	c.debounceMu.Lock()
+	pendingKeys := make([]string, 0, len(c.debounceTimers))
 	for k, entry := range c.debounceTimers {
 		entry.mu.Lock()
 		if entry.timer != nil {
 			entry.timer.Stop()
 		}
 		entry.mu.Unlock()
-		delete(c.debounceTimers, k)
+		pendingKeys = append(pendingKeys, k)
 	}
 	c.debounceMu.Unlock()
+
+	for _, k := range pendingKeys {
+		c.flushDebounce(k)
+	}
 
 	// Wait for all goroutines with timeout
 	doneCh := make(chan struct{})
@@ -315,6 +320,38 @@ func (c *Channel) Stop(_ context.Context) error {
 	}
 
 	return nil
+}
+
+// HandleMessage overrides BaseChannel to allow messages when the chatID (Slack channel)
+// is in the allowlist, enabling group-level allowlisting without requiring individual user IDs.
+// This is Slack-specific: other channels only check senderID in BaseChannel.HandleMessage.
+func (c *Channel) HandleMessage(senderID, chatID, content string, mediaPaths []string, metadata map[string]string, peerKind string) {
+	// Allow if either the sender or the Slack channel ID is in the allowlist.
+	if !c.IsAllowed(senderID) && !c.IsAllowed(chatID) {
+		return
+	}
+
+	userID := senderID
+	if idx := strings.IndexByte(senderID, '|'); idx > 0 {
+		userID = senderID[:idx]
+	}
+
+	var mediaFiles []bus.MediaFile
+	for _, p := range mediaPaths {
+		mediaFiles = append(mediaFiles, bus.MediaFile{Path: p})
+	}
+
+	c.Bus().PublishInbound(bus.InboundMessage{
+		Channel:  c.Name(),
+		SenderID: senderID,
+		ChatID:   chatID,
+		Content:  content,
+		Media:    mediaFiles,
+		PeerKind: peerKind,
+		UserID:   userID,
+		Metadata: metadata,
+		AgentID:  c.AgentID(),
+	})
 }
 
 // BlockReplyEnabled returns the per-channel block_reply override.
