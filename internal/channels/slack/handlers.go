@@ -39,12 +39,38 @@ func (c *Channel) handleEventsAPI(evt socketmode.Event) {
 }
 
 func (c *Channel) handleMessage(ev *slackevents.MessageEvent) {
+	// For message_changed: extract user/text from the nested Message field.
+	// Only process if the edit introduces a new @bot mention.
+	if ev.SubType == "message_changed" {
+		if ev.Message == nil {
+			return
+		}
+		// Skip bot's own edits or messages without a user
+		if ev.Message.User == c.botUserID || ev.Message.User == "" {
+			return
+		}
+		// Only process if the edited message mentions the bot
+		if !c.isBotMentioned(ev.Message.Text) {
+			return
+		}
+		// Check that the previous version did NOT mention the bot (newly added mention)
+		if ev.PreviousMessage != nil && c.isBotMentioned(ev.PreviousMessage.Text) {
+			return
+		}
+		// Promote nested fields to top-level for unified processing below
+		ev.User = ev.Message.User
+		ev.Text = ev.Message.Text
+		ev.TimeStamp = ev.Message.Timestamp
+		ev.ThreadTimeStamp = ev.Message.ThreadTimestamp
+	}
+
 	if ev.User == c.botUserID || ev.User == "" {
 		return
 	}
 
 	// Skip message subtypes (edits, deletes, bot_message, joins, etc.)
-	if ev.SubType != "" {
+	// Allow "file_share" and "message_changed" subtypes.
+	if ev.SubType != "" && ev.SubType != "file_share" && ev.SubType != "message_changed" {
 		return
 	}
 
@@ -85,6 +111,35 @@ func (c *Channel) handleMessage(ev *slackevents.MessageEvent) {
 		slog.Debug("slack message rejected by allowlist",
 			"user_id", senderID, "display_name", displayName)
 		return
+	}
+
+	// Process file attachments from Slack message
+	var mediaPaths []string
+	if ev.Message != nil && len(ev.Message.Files) > 0 {
+		items, docContent := c.resolveMedia(ev.Message.Files)
+
+		for _, item := range items {
+			if item.FilePath != "" {
+				mediaPaths = append(mediaPaths, item.FilePath)
+			}
+		}
+
+		// Prepend media tags and document content to message text
+		mediaTags := buildMediaTags(items)
+		if mediaTags != "" {
+			if content != "" {
+				content = mediaTags + "\n\n" + content
+			} else {
+				content = mediaTags
+			}
+		}
+		if docContent != "" {
+			if content != "" {
+				content = content + "\n\n" + docContent
+			} else {
+				content = docContent
+			}
+		}
 	}
 
 	if content == "" {
@@ -181,7 +236,7 @@ func (c *Channel) handleMessage(ev *slackevents.MessageEvent) {
 
 	// Message debounce: batch rapid messages per-thread
 	if c.debounceDelay > 0 {
-		if c.debounceMessage(localKey, compoundSenderID, channelID, finalContent, nil, metadata, peerKind) {
+		if c.debounceMessage(localKey, compoundSenderID, channelID, finalContent, mediaPaths, metadata, peerKind) {
 			// Record thread participation even when debounced
 			if peerKind == "group" && replyThreadTS != "" {
 				participKey := channelID + ":particip:" + replyThreadTS
@@ -191,7 +246,7 @@ func (c *Channel) handleMessage(ev *slackevents.MessageEvent) {
 		}
 	}
 
-	c.HandleMessage(compoundSenderID, channelID, finalContent, nil, metadata, peerKind)
+	c.HandleMessage(compoundSenderID, channelID, finalContent, mediaPaths, metadata, peerKind)
 
 	// Record thread participation for auto-reply cache
 	if peerKind == "group" {
@@ -337,6 +392,7 @@ func (c *Channel) debounceMessage(localKey, senderID, channelID, content string,
 	defer entry.mu.Unlock()
 
 	entry.messages = append(entry.messages, content)
+	entry.media = append(entry.media, media...)
 
 	if !loaded {
 		entry.timer = time.AfterFunc(c.debounceDelay, func() {
@@ -492,20 +548,20 @@ func isAllowedDownloadHost(rawURL string) bool {
 	return false
 }
 
-func (c *Channel) downloadFile(f slackevents.File) (string, error) {
-	downloadURL := f.URLPrivateDownload
+func (c *Channel) downloadFile(name, urlPrivate, urlPrivateDownload string, maxBytes int64) (string, error) {
+	downloadURL := urlPrivateDownload
 	if downloadURL == "" {
-		downloadURL = f.URLPrivate
+		downloadURL = urlPrivate
 	}
 	if downloadURL == "" {
-		return "", fmt.Errorf("no download URL for file %s", f.Name)
+		return "", fmt.Errorf("no download URL for file %s", name)
 	}
 
 	if !isAllowedDownloadHost(downloadURL) {
 		return "", fmt.Errorf("security: download URL hostname not in Slack allowlist: %s", downloadURL)
 	}
 
-	ext := filepath.Ext(f.Name)
+	ext := filepath.Ext(name)
 	if ext == "" {
 		ext = ".dat"
 	}
@@ -516,6 +572,7 @@ func (c *Channel) downloadFile(f slackevents.File) (string, error) {
 	defer tmpFile.Close()
 
 	client := &http.Client{
+		Timeout: 60 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			req.Header.Del("Authorization") // strip auth on redirect (CDN presigned URL)
 			if req.URL.Scheme != "https" {
@@ -547,9 +604,7 @@ func (c *Channel) downloadFile(f slackevents.File) (string, error) {
 		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
 
-	// Limit download to 50MB to prevent OOM
-	const maxDownloadSize = 50 * 1024 * 1024
-	if _, err := io.Copy(tmpFile, io.LimitReader(resp.Body, maxDownloadSize)); err != nil {
+	if _, err := io.Copy(tmpFile, io.LimitReader(resp.Body, maxBytes)); err != nil {
 		os.Remove(tmpFile.Name())
 		return "", err
 	}

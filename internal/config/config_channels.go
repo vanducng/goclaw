@@ -97,6 +97,7 @@ type SlackConfig struct {
 	BlockReply     *bool               `json:"block_reply,omitempty"`        // override gateway block_reply (nil = inherit)
 	DebounceDelay  int                 `json:"debounce_delay,omitempty"`     // ms delay before dispatching rapid messages (default 300, 0=disabled)
 	ThreadTTL      *int                `json:"thread_ttl,omitempty"`         // hours before thread participation expires (default 24, 0=disabled — always require @mention)
+	MediaMaxBytes  int64               `json:"media_max_bytes,omitempty"`    // max file download size in bytes (default 20MB)
 }
 
 type WhatsAppConfig struct {
