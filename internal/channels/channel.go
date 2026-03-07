@@ -244,7 +244,7 @@ func (c *BaseChannel) ValidatePolicy(dmPolicy, groupPolicy string) {
 // This is the standard way for channels to forward received messages.
 // peerKind should be "direct" or "group" (see sessions.PeerDirect, sessions.PeerGroup).
 func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []string, metadata map[string]string, peerKind string) {
-	if !c.IsAllowed(senderID) {
+	if !c.IsAllowed(senderID) && !c.IsAllowed(chatID) {
 		return
 	}
 
