@@ -712,6 +712,7 @@ func runGateway() {
 			slog.Error("failed to initialize telegram channel", "error", err)
 		} else {
 			channelMgr.RegisterChannel("telegram", tg)
+			channelMgr.SetChannelType("telegram", "telegram")
 			slog.Info("telegram channel enabled (config)")
 		}
 	}
@@ -722,6 +723,7 @@ func runGateway() {
 			slog.Error("failed to initialize discord channel", "error", err)
 		} else {
 			channelMgr.RegisterChannel("discord", dc)
+			channelMgr.SetChannelType("discord", "discord")
 			slog.Info("discord channel enabled (config)")
 		}
 	}
@@ -732,6 +734,7 @@ func runGateway() {
 			slog.Error("failed to initialize whatsapp channel", "error", err)
 		} else {
 			channelMgr.RegisterChannel("whatsapp", wa)
+			channelMgr.SetChannelType("whatsapp", "whatsapp")
 			slog.Info("whatsapp channel enabled (config)")
 		}
 	}
@@ -742,6 +745,7 @@ func runGateway() {
 			slog.Error("failed to initialize zalo channel", "error", err)
 		} else {
 			channelMgr.RegisterChannel("zalo", z)
+			channelMgr.SetChannelType("zalo", "zalo")
 			slog.Info("zalo channel enabled (config)")
 		}
 	}
@@ -752,6 +756,7 @@ func runGateway() {
 			slog.Error("failed to initialize zca channel", "error", err)
 		} else {
 			channelMgr.RegisterChannel("zalo_personal", zp)
+			channelMgr.SetChannelType("zalo_personal", "zalo_personal")
 			slog.Info("zca (zalo personal) channel enabled (config)")
 		}
 	}
@@ -762,6 +767,7 @@ func runGateway() {
 			slog.Error("failed to initialize feishu channel", "error", err)
 		} else {
 			channelMgr.RegisterChannel("feishu", f)
+			channelMgr.SetChannelType("feishu", "feishu")
 			slog.Info("feishu/lark channel enabled (config)")
 		}
 	}
@@ -910,7 +916,7 @@ func runGateway() {
 	defer sched.Stop()
 
 	// Start cron service with job handler (routes through scheduler's cron lane)
-	pgStores.Cron.SetOnJob(makeCronJobHandler(sched, msgBus, cfg))
+	pgStores.Cron.SetOnJob(makeCronJobHandler(sched, msgBus, cfg, channelMgr))
 	if err := pgStores.Cron.Start(); err != nil {
 		slog.Warn("cron service failed to start", "error", err)
 	}

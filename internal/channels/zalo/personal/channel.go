@@ -156,9 +156,12 @@ func (c *Channel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	}
 
 	threadType := protocol.ThreadTypeUser
-	if msg.Metadata != nil {
+	if _, isGroup := c.approvedGroups.Load(msg.ChatID); isGroup {
+		threadType = protocol.ThreadTypeGroup
+	} else if msg.Metadata != nil {
 		if _, ok := msg.Metadata["group_id"]; ok {
 			threadType = protocol.ThreadTypeGroup
+			c.approvedGroups.Store(msg.ChatID, true)
 		}
 	}
 

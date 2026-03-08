@@ -31,6 +31,7 @@ type RunContext struct {
 // and routing outbound messages to the correct channel.
 type Manager struct {
 	channels     map[string]Channel
+	channelTypes map[string]string // instance name → channel type (e.g. "zep-lao" → "zalo_personal")
 	bus          *bus.MessageBus
 	runs         sync.Map // runID string → *RunContext
 	dispatchTask *asyncTask
@@ -45,8 +46,9 @@ type asyncTask struct {
 // Channels are registered externally via RegisterChannel.
 func NewManager(msgBus *bus.MessageBus) *Manager {
 	return &Manager{
-		channels: make(map[string]Channel),
-		bus:      msgBus,
+		channels:     make(map[string]Channel),
+		channelTypes: make(map[string]string),
+		bus:          msgBus,
 	}
 }
 
@@ -208,6 +210,20 @@ func (m *Manager) RegisterChannel(name string, channel Channel) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.channels[name] = channel
+}
+
+// SetChannelType records the platform type for a channel instance name.
+func (m *Manager) SetChannelType(name, channelType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.channelTypes[name] = channelType
+}
+
+// ChannelTypeForName returns the platform type for a channel instance name.
+func (m *Manager) ChannelTypeForName(name string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.channelTypes[name]
 }
 
 // UnregisterChannel removes a channel from the manager.

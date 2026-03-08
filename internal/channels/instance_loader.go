@@ -213,8 +213,8 @@ func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelIns
 		}
 		base.SetAgentID(ag.AgentKey)
 	}
-
 	l.manager.RegisterChannel(inst.Name, ch)
+	l.manager.SetChannelType(inst.Name, inst.ChannelType)
 	l.loaded[inst.Name] = struct{}{}
 
 	// Start the channel if requested (Reload path). LoadAll defers to StartAll.
