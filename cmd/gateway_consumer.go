@@ -243,19 +243,13 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 		}
 
 		// Schedule through main lane (per-session concurrency controlled by maxConcurrent)
-		// Resolve channel type (e.g. "zalo_personal", "telegram") for system prompt context.
-		var channelType string
-		if channelMgr != nil {
-			channelType = channelMgr.ChannelTypeForName(msg.Channel)
-		}
-
 		outCh := sched.ScheduleWithOpts(ctx, "main", agent.RunRequest{
 			SessionKey:        sessionKey,
 			Message:           msg.Content,
 			Media:             reqMedia,
 			ForwardMedia:      fwdMedia,
 			Channel:           msg.Channel,
-			ChannelType:       channelType,
+			ChannelType:       resolveChannelType(channelMgr, msg.Channel),
 			ChatID:            msg.ChatID,
 			PeerKind:          peerKind,
 			LocalKey:          msg.Metadata["local_key"],
@@ -396,10 +390,7 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 			origChannel := msg.Metadata["origin_channel"]
 			origPeerKind := msg.Metadata["origin_peer_kind"]
 			origLocalKey := msg.Metadata["origin_local_key"]
-			var origChannelType string
-			if channelMgr != nil && origChannel != "" {
-				origChannelType = channelMgr.ChannelTypeForName(origChannel)
-			}
+			origChannelType := resolveChannelType(channelMgr, origChannel)
 			parentAgent := msg.Metadata["parent_agent"]
 			if parentAgent == "" {
 				parentAgent = "default"
@@ -538,10 +529,7 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 			origChannel := msg.Metadata["origin_channel"]
 			origPeerKind := msg.Metadata["origin_peer_kind"]
 			origLocalKey := msg.Metadata["origin_local_key"]
-			var origChannelType string
-			if channelMgr != nil && origChannel != "" {
-				origChannelType = channelMgr.ChannelTypeForName(origChannel)
-			}
+			origChannelType := resolveChannelType(channelMgr, origChannel)
 			parentAgent := msg.Metadata["parent_agent"]
 			if parentAgent == "" {
 				parentAgent = "default"
@@ -670,10 +658,7 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 			origChannel := msg.Metadata["origin_channel"]
 			origPeerKind := msg.Metadata["origin_peer_kind"]
 			origLocalKey := msg.Metadata["origin_local_key"]
-			var origChannelType string
-			if channelMgr != nil && origChannel != "" {
-				origChannelType = channelMgr.ChannelTypeForName(origChannel)
-			}
+			origChannelType := resolveChannelType(channelMgr, origChannel)
 			targetAgent := msg.AgentID
 			if targetAgent == "" {
 				targetAgent = cfg.ResolveDefaultAgentID()
@@ -741,10 +726,7 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 			origChannel := msg.Metadata["origin_channel"]
 			origPeerKind := msg.Metadata["origin_peer_kind"]
 			origLocalKey := msg.Metadata["origin_local_key"]
-			var origChannelType string
-			if channelMgr != nil && origChannel != "" {
-				origChannelType = channelMgr.ChannelTypeForName(origChannel)
-			}
+			origChannelType := resolveChannelType(channelMgr, origChannel)
 			targetAgent := msg.AgentID // team_message sets AgentID to the target agent key
 			if targetAgent == "" {
 				targetAgent = cfg.ResolveDefaultAgentID()
@@ -1033,3 +1015,11 @@ func buildAnnounceOutMeta(localKey string) map[string]string {
 	return meta
 }
 
+// resolveChannelType returns the platform type for a channel instance name.
+// Returns empty string if channelMgr is nil or channel name is empty.
+func resolveChannelType(channelMgr *channels.Manager, name string) string {
+	if channelMgr == nil || name == "" {
+		return ""
+	}
+	return channelMgr.ChannelTypeForName(name)
+}

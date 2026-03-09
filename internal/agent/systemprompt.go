@@ -23,7 +23,7 @@ type SystemPromptConfig struct {
 	AgentID       string
 	Model         string
 	Workspace     string
-	Channel       string                 // runtime channel instance name (e.g. "zep-lao")
+	Channel       string                 // runtime channel instance name (e.g. "my-telegram-bot")
 	ChannelType   string                 // platform type (e.g. "zalo_personal", "telegram")
 	PeerKind      string                 // "direct" or "group"
 	OwnerIDs      []string               // owner sender IDs

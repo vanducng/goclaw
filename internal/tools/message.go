@@ -25,7 +25,7 @@ func (t *MessageTool) SetMessageBus(b *bus.MessageBus)   { t.msgBus = b }
 
 func (t *MessageTool) Name() string { return "message" }
 func (t *MessageTool) Description() string {
-	return "Send a message to a channel (Telegram, Discord, Zalo, etc.) or the current chat. Channel and target are auto-filled from context."
+	return "Send a message to a channel (Telegram, Discord, Slack, Zalo, Feishu/Lark, WhatsApp, etc.) or the current chat. Channel and target are auto-filled from context."
 }
 
 func (t *MessageTool) Parameters() map[string]interface{} {

@@ -37,10 +37,7 @@ func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg 
 		peerKind := resolveCronPeerKind(job)
 
 		// Resolve channel type for system prompt context.
-		var channelType string
-		if channelMgr != nil && channel != "" && channel != "cron" {
-			channelType = channelMgr.ChannelTypeForName(channel)
-		}
+		channelType := resolveChannelType(channelMgr, channel)
 
 		// Schedule through cron lane — scheduler handles agent resolution and concurrency
 		outCh := sched.Schedule(context.Background(), scheduler.LaneCron, agent.RunRequest{
