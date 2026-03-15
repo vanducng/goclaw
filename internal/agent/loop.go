@@ -372,6 +372,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	var deliverables []string      // actual content from tool outputs (for team task results)
 	var blockReplies int           // count of block.reply events emitted (for dedup in consumer)
 	var lastBlockReply string      // last block reply content
+	sentMedia := map[string]bool{} // media paths already sent by message tool (dedup)
 
 	// Mid-loop compaction: summarize in-memory messages when context exceeds threshold.
 	// Uses same config as maybeSummarize (contextWindow * historyShare).
@@ -753,6 +754,18 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 
 			l.scanWebToolResult(tc.Name, result)
 
+			// Track media sent directly by message tool (dedup with RunResult.Media).
+			if tc.Name == "message" && !result.IsError {
+				if msg, _ := tc.Arguments["message"].(string); strings.HasPrefix(strings.TrimSpace(msg), "MEDIA:") {
+					// message tool sent this media via outbound bus — mark path as sent.
+					mediaPath := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(msg), "MEDIA:"))
+					if nl := strings.IndexByte(mediaPath, '\n'); nl >= 0 {
+						mediaPath = mediaPath[:nl]
+					}
+					sentMedia[filepath.Base(mediaPath)] = true
+				}
+			}
+
 			// Collect MEDIA: paths from tool results.
 			// Prefer result.Media (explicit) over ForLLM MEDIA: prefix (legacy) to avoid duplicates.
 			if len(result.Media) > 0 {
@@ -898,6 +911,17 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 
 				l.scanWebToolResult(r.tc.Name, r.result)
 
+				// Track media sent directly by message tool (dedup with RunResult.Media).
+				if r.tc.Name == "message" && !r.result.IsError {
+					if msg, _ := r.tc.Arguments["message"].(string); strings.HasPrefix(strings.TrimSpace(msg), "MEDIA:") {
+						mediaPath := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(msg), "MEDIA:"))
+						if nl := strings.IndexByte(mediaPath, '\n'); nl >= 0 {
+							mediaPath = mediaPath[:nl]
+						}
+						sentMedia[filepath.Base(mediaPath)] = true
+					}
+				}
+
 				// Collect MEDIA: paths from tool results.
 				// Prefer result.Media (explicit) over ForLLM MEDIA: prefix (legacy) to avoid duplicates.
 				if len(r.result.Media) > 0 {
@@ -1038,6 +1062,17 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 			ct = mimeFromExt(filepath.Ext(mf.Path))
 		}
 		mediaResults = append(mediaResults, MediaResult{Path: mf.Path, ContentType: ct})
+	}
+
+	// Deduplicate: exclude media already sent by message tool to avoid double delivery.
+	if len(sentMedia) > 0 {
+		filtered := mediaResults[:0]
+		for _, mr := range mediaResults {
+			if !sentMedia[filepath.Base(mr.Path)] {
+				filtered = append(filtered, mr)
+			}
+		}
+		mediaResults = filtered
 	}
 
 	return &RunResult{
