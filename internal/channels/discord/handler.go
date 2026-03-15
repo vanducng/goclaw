@@ -139,10 +139,16 @@ func (c *Channel) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate
 			}
 		}
 		if !mentioned {
+			// Extract file paths to preserve in history for later @mention
+			var mediaPaths []string
+			for _, mf := range mediaFiles {
+				mediaPaths = append(mediaPaths, mf.Path)
+			}
 			c.groupHistory.Record(channelID, channels.HistoryEntry{
 				Sender:    senderName,
 				SenderID:  senderID,
 				Body:      content,
+				Media:     mediaPaths,
 				Timestamp: m.Timestamp,
 				MessageID: m.ID,
 			}, c.historyLimit)
@@ -230,6 +236,14 @@ func (c *Channel) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate
 				)
 				break
 			}
+		}
+	}
+
+	// Collect media from pending history entries (sent before this @mention).
+	// Must come after BuildContext — CollectMedia nulls out Media fields to prevent double-cleanup.
+	if peerKind == "group" {
+		for _, p := range c.groupHistory.CollectMedia(channelID) {
+			mediaFiles = append(mediaFiles, bus.MediaFile{Path: p})
 		}
 	}
 
