@@ -92,6 +92,7 @@ func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 				Sender:    senderName,
 				SenderID:  senderID,
 				Body:      content,
+				Media:     media,
 				Timestamp: time.Now(),
 				MessageID: msg.Data.MsgID,
 			}, c.historyLimit)
@@ -124,12 +125,17 @@ func (c *Channel) handleGroupMessage(msg protocol.GroupMessage) {
 
 	c.startTyping(threadID, protocol.ThreadTypeGroup)
 
+	// Collect media from pending history entries (images sent before this @mention).
+	// Must come after BuildContext — CollectMedia nulls out Media fields to prevent double-cleanup.
+	histMedia := c.groupHistory.CollectMedia(threadID)
+	allMedia := append(histMedia, media...)
+
 	metadata := map[string]string{
 		"message_id": msg.Data.MsgID,
 		"platform":   channels.TypeZaloPersonal,
 		"group_id":   threadID,
 	}
-	c.HandleMessage(senderID, threadID, finalContent, media, metadata, "group")
+	c.HandleMessage(senderID, threadID, finalContent, allMedia, metadata, "group")
 
 	// Clear pending history after sending to agent (matches Telegram/Discord/Slack/Feishu pattern).
 	c.groupHistory.Clear(threadID)
