@@ -95,6 +95,10 @@ func (t *CreateImageTool) Execute(ctx context.Context, args map[string]any) *Res
 		return ErrorResult(fmt.Sprintf("image generation failed: %v", err))
 	}
 
+	if len(chainResult.Data) == 0 {
+		return ErrorResult("image generation returned empty data")
+	}
+
 	// Save to workspace under date-based folder (e.g. generated/2026-03-02/)
 	workspace := ToolWorkspaceFromCtx(ctx)
 	if workspace == "" {
@@ -107,6 +111,14 @@ func (t *CreateImageTool) Execute(ctx context.Context, args map[string]any) *Res
 	imagePath := filepath.Join(dateDir, fmt.Sprintf("goclaw_gen_%d.png", time.Now().UnixNano()))
 	if err := os.WriteFile(imagePath, chainResult.Data, 0644); err != nil {
 		return ErrorResult(fmt.Sprintf("failed to save generated image: %v", err))
+	}
+
+	// Verify file was persisted (diagnostic for disappearing files).
+	if fi, err := os.Stat(imagePath); err != nil {
+		slog.Warn("create_image: file missing immediately after write", "path", imagePath, "error", err)
+		return ErrorResult(fmt.Sprintf("generated image file missing after write: %v", err))
+	} else {
+		slog.Info("create_image: file saved", "path", imagePath, "size", fi.Size(), "data_len", len(chainResult.Data))
 	}
 
 	result := &Result{ForLLM: fmt.Sprintf("MEDIA:%s", imagePath)}

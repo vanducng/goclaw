@@ -113,6 +113,10 @@ func (t *CreateVideoTool) Execute(ctx context.Context, args map[string]any) *Res
 		return ErrorResult(fmt.Sprintf("video generation failed: %v", err))
 	}
 
+	if len(chainResult.Data) == 0 {
+		return ErrorResult("video generation returned empty data")
+	}
+
 	// Save to workspace under date-based folder.
 	workspace := ToolWorkspaceFromCtx(ctx)
 	if workspace == "" {
@@ -125,6 +129,14 @@ func (t *CreateVideoTool) Execute(ctx context.Context, args map[string]any) *Res
 	videoPath := filepath.Join(dateDir, fmt.Sprintf("goclaw_gen_%d.mp4", time.Now().UnixNano()))
 	if err := os.WriteFile(videoPath, chainResult.Data, 0644); err != nil {
 		return ErrorResult(fmt.Sprintf("failed to save generated video: %v", err))
+	}
+
+	// Verify file was persisted.
+	if fi, err := os.Stat(videoPath); err != nil {
+		slog.Warn("create_video: file missing immediately after write", "path", videoPath, "error", err)
+		return ErrorResult(fmt.Sprintf("generated video file missing after write: %v", err))
+	} else {
+		slog.Info("create_video: file saved", "path", videoPath, "size", fi.Size(), "data_len", len(chainResult.Data))
 	}
 
 	result := &Result{ForLLM: fmt.Sprintf("MEDIA:%s", videoPath)}

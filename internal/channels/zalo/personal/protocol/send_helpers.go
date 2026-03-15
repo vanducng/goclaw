@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"os"
+	"path/filepath"
 )
 
 // maxUploadSize is the maximum file size for Zalo uploads (25 MB).
@@ -17,6 +19,14 @@ const maxUploadSize = 25 * 1024 * 1024
 func checkFileSize(filePath string) error {
 	fi, err := os.Stat(filePath)
 	if err != nil {
+		// Log directory listing for diagnosis when file is missing.
+		dir := filepath.Dir(filePath)
+		entries, _ := os.ReadDir(dir)
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		slog.Warn("checkFileSize: file missing", "file", filepath.Base(filePath), "dir", dir, "dir_entries", names)
 		return fmt.Errorf("zalo_personal: stat file: %w", err)
 	}
 	if fi.Size() > maxUploadSize {
