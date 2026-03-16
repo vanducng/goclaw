@@ -38,7 +38,8 @@ func NewInboundDebouncer(debounceMs time.Duration, flushFn func(InboundMessage))
 }
 
 // Push adds a message to the debounce buffer.
-// If debouncing is disabled or the message should bypass (media), it is flushed immediately.
+// All messages (text and media) are debounced so that a file/image followed by
+// a text caption within the debounce window are merged into a single agent turn.
 func (d *InboundDebouncer) Push(msg InboundMessage) {
 	// Disabled: pass through immediately.
 	if d.debounceMs <= 0 {
@@ -47,13 +48,6 @@ func (d *InboundDebouncer) Push(msg InboundMessage) {
 	}
 
 	key := debounceKey(msg)
-
-	// Media messages bypass debounce — flush any buffered text first, then process media.
-	if len(msg.Media) > 0 {
-		d.flushKey(key)
-		d.flushFn(msg)
-		return
-	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -79,7 +73,8 @@ func (d *InboundDebouncer) Push(msg InboundMessage) {
 			"key", key, "debounce_ms", d.debounceMs.Milliseconds())
 	} else {
 		slog.Debug("inbound debounce: message appended",
-			"key", key, "buffered", len(buf.messages))
+			"key", key, "buffered", len(buf.messages),
+			"has_media", len(msg.Media) > 0)
 	}
 }
 
