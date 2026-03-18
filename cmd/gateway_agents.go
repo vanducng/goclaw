@@ -194,13 +194,12 @@ func setupTTS(cfg *config.Config) *tts.Manager {
 		}))
 	}
 
-	if ttsCfg.Edge.Enabled {
-		mgr.RegisterProvider(tts.NewEdgeProvider(tts.EdgeConfig{
-			Voice:     ttsCfg.Edge.Voice,
-			Rate:      ttsCfg.Edge.Rate,
-			TimeoutMs: ttsCfg.TimeoutMs,
-		}))
-	}
+	// Edge TTS is free (no API key) — always register so it's available as primary or fallback.
+	mgr.RegisterProvider(tts.NewEdgeProvider(tts.EdgeConfig{
+		Voice:     ttsCfg.Edge.Voice,
+		Rate:      ttsCfg.Edge.Rate,
+		TimeoutMs: ttsCfg.TimeoutMs,
+	}))
 
 	if key := ttsCfg.MiniMax.APIKey; key != "" {
 		mgr.RegisterProvider(tts.NewMiniMaxProvider(tts.MiniMaxConfig{
