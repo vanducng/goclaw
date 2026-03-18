@@ -23,6 +23,11 @@ func NewTtsTool(mgr *tts.Manager) *TtsTool {
 	return &TtsTool{manager: mgr}
 }
 
+// UpdateManager swaps the underlying TTS manager (used on config reload).
+func (t *TtsTool) UpdateManager(mgr *tts.Manager) {
+	t.manager = mgr
+}
+
 func (t *TtsTool) Name() string { return "tts" }
 
 func (t *TtsTool) Description() string {
