@@ -54,7 +54,7 @@ RUN set -eux; \
     if [ "$ENABLE_FULL_SKILLS" = "true" ]; then \
         apk add --no-cache python3 py3-pip nodejs npm pandoc github-cli; \
         pip3 install --no-cache-dir --break-system-packages \
-            pypdf openpyxl pandas python-pptx markitdown defusedxml lxml edge-tts; \
+            pypdf openpyxl pandas python-pptx markitdown defusedxml lxml; \
         npm install -g --cache /tmp/npm-cache docx pptxgenjs; \
         rm -rf /tmp/npm-cache /root/.cache /var/cache/apk/*; \
     else \
