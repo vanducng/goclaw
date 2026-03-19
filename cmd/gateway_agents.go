@@ -161,7 +161,8 @@ func setupSubagents(providerReg *providers.Registry, cfg *config.Config, msgBus 
 }
 
 // setupTTS creates the TTS manager from config and registers providers.
-// Returns nil if no TTS provider has an API key configured.
+// Edge TTS is always registered (free, no API key required).
+// Always returns a non-nil manager with at least one provider.
 func setupTTS(cfg *config.Config) *tts.Manager {
 	ttsCfg := cfg.Tts
 
