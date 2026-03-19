@@ -82,7 +82,25 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	model := p.resolveModel(req.Model)
 	body := p.buildRequestBody(model, req, false)
 
-	resp, err := RetryDo(ctx, p.retryConfig, func() (*ChatResponse, error) {
+	chatFn := p.chatRequestFn(ctx, body)
+
+	resp, err := RetryDo(ctx, p.retryConfig, chatFn)
+
+	// Auto-clamp max_tokens and retry once if the model rejects the value
+	if err != nil {
+		if clamped := clampMaxTokensFromError(err, body); clamped {
+			slog.Info("max_tokens clamped, retrying", "model", model, "limit", clampedLimit(body))
+			return RetryDo(ctx, p.retryConfig, chatFn)
+		}
+	}
+
+	return resp, err
+}
+
+// chatRequestFn returns a closure that performs a single non-streaming chat request.
+// Shared between initial attempt and post-clamp retry to avoid duplication.
+func (p *OpenAIProvider) chatRequestFn(ctx context.Context, body map[string]any) func() (*ChatResponse, error) {
+	return func() (*ChatResponse, error) {
 		respBody, err := p.doRequest(ctx, body)
 		if err != nil {
 			return nil, err
@@ -95,30 +113,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		}
 
 		return p.parseResponse(&oaiResp), nil
-	})
-
-	// Auto-clamp max_tokens and retry once if the model rejects the value
-	if err != nil {
-		if clamped := clampMaxTokensFromError(err, body); clamped {
-			slog.Info("max_tokens clamped, retrying", "model", model, "max_tokens", body["max_tokens"])
-			return RetryDo(ctx, p.retryConfig, func() (*ChatResponse, error) {
-				respBody, err := p.doRequest(ctx, body)
-				if err != nil {
-					return nil, err
-				}
-				defer respBody.Close()
-
-				var oaiResp openAIResponse
-				if err := json.NewDecoder(respBody).Decode(&oaiResp); err != nil {
-					return nil, fmt.Errorf("%s: decode response: %w", p.name, err)
-				}
-
-				return p.parseResponse(&oaiResp), nil
-			})
-		}
 	}
-
-	return resp, err
 }
 
 func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChunk func(StreamChunk)) (*ChatResponse, error) {
@@ -133,7 +128,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChun
 	// Auto-clamp max_tokens and retry once if the model rejects the value
 	if err != nil {
 		if clamped := clampMaxTokensFromError(err, body); clamped {
-			slog.Info("max_tokens clamped, retrying stream", "model", model, "max_tokens", body["max_tokens"])
+			slog.Info("max_tokens clamped, retrying stream", "model", model, "limit", clampedLimit(body))
 			respBody, err = RetryDo(ctx, p.retryConfig, func() (io.ReadCloser, error) {
 				return p.doRequest(ctx, body)
 			})
@@ -506,4 +501,12 @@ func clampMaxTokensFromError(err error, body map[string]any) bool {
 		body["max_tokens"] = limit
 	}
 	return true
+}
+
+// clampedLimit returns the clamped max_tokens or max_completion_tokens value for logging.
+func clampedLimit(body map[string]any) any {
+	if v, ok := body["max_completion_tokens"]; ok {
+		return v
+	}
+	return body["max_tokens"]
 }

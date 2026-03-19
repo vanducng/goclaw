@@ -98,7 +98,7 @@ func (h *ProvidersHandler) handleVerifyProvider(w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	resp, err := provider.Chat(ctx, providers.ChatRequest{
+	_, err = provider.Chat(ctx, providers.ChatRequest{
 		Messages: []providers.Message{
 			{Role: "user", Content: "hi"},
 		},
@@ -112,9 +112,6 @@ func (h *ProvidersHandler) handleVerifyProvider(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": friendlyVerifyError(err)})
 		return
 	}
-
-	// Any response (even truncated) proves the model is reachable and valid.
-	_ = resp
 	writeJSON(w, http.StatusOK, map[string]any{"valid": true})
 }
 
