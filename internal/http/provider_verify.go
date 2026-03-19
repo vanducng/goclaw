@@ -98,13 +98,14 @@ func (h *ProvidersHandler) handleVerifyProvider(w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	_, err = provider.Chat(ctx, providers.ChatRequest{
+	resp, err := provider.Chat(ctx, providers.ChatRequest{
 		Messages: []providers.Message{
 			{Role: "user", Content: "hi"},
 		},
 		Model: req.Model,
 		Options: map[string]any{
-			"max_tokens": 1,
+			// Use a small but safe value — reasoning models need headroom beyond 1 token.
+			"max_tokens": 50,
 		},
 	})
 	if err != nil {
@@ -112,6 +113,8 @@ func (h *ProvidersHandler) handleVerifyProvider(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Any response (even truncated) proves the model is reachable and valid.
+	_ = resp
 	writeJSON(w, http.StatusOK, map[string]any{"valid": true})
 }
 

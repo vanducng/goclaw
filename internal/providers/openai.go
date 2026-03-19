@@ -5,10 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -79,7 +82,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	model := p.resolveModel(req.Model)
 	body := p.buildRequestBody(model, req, false)
 
-	return RetryDo(ctx, p.retryConfig, func() (*ChatResponse, error) {
+	resp, err := RetryDo(ctx, p.retryConfig, func() (*ChatResponse, error) {
 		respBody, err := p.doRequest(ctx, body)
 		if err != nil {
 			return nil, err
@@ -93,6 +96,29 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 
 		return p.parseResponse(&oaiResp), nil
 	})
+
+	// Auto-clamp max_tokens and retry once if the model rejects the value
+	if err != nil {
+		if clamped := clampMaxTokensFromError(err, body); clamped {
+			slog.Info("max_tokens clamped, retrying", "model", model, "max_tokens", body["max_tokens"])
+			return RetryDo(ctx, p.retryConfig, func() (*ChatResponse, error) {
+				respBody, err := p.doRequest(ctx, body)
+				if err != nil {
+					return nil, err
+				}
+				defer respBody.Close()
+
+				var oaiResp openAIResponse
+				if err := json.NewDecoder(respBody).Decode(&oaiResp); err != nil {
+					return nil, fmt.Errorf("%s: decode response: %w", p.name, err)
+				}
+
+				return p.parseResponse(&oaiResp), nil
+			})
+		}
+	}
+
+	return resp, err
 }
 
 func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChunk func(StreamChunk)) (*ChatResponse, error) {
@@ -103,6 +129,16 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChun
 	respBody, err := RetryDo(ctx, p.retryConfig, func() (io.ReadCloser, error) {
 		return p.doRequest(ctx, body)
 	})
+
+	// Auto-clamp max_tokens and retry once if the model rejects the value
+	if err != nil {
+		if clamped := clampMaxTokensFromError(err, body); clamped {
+			slog.Info("max_tokens clamped, retrying stream", "model", model, "max_tokens", body["max_tokens"])
+			respBody, err = RetryDo(ctx, p.retryConfig, func() (io.ReadCloser, error) {
+				return p.doRequest(ctx, body)
+			})
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -437,4 +473,37 @@ func (p *OpenAIProvider) parseResponse(resp *openAIResponse) *ChatResponse {
 	}
 
 	return result
+}
+
+// maxTokensLimitRe matches "supports at most N completion tokens" from OpenAI 400 errors.
+var maxTokensLimitRe = regexp.MustCompile(`supports at most (\d+) completion tokens`)
+
+// clampMaxTokensFromError checks if an error is a 400 "max_tokens is too large" rejection.
+// If so, it parses the model's stated limit, clamps the body's max_tokens/max_completion_tokens,
+// and returns true so the caller can retry.
+func clampMaxTokensFromError(err error, body map[string]any) bool {
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusBadRequest {
+		return false
+	}
+	if !strings.Contains(httpErr.Body, "max_tokens") || !strings.Contains(httpErr.Body, "too large") {
+		return false
+	}
+
+	matches := maxTokensLimitRe.FindStringSubmatch(httpErr.Body)
+	if len(matches) < 2 {
+		return false
+	}
+	limit, parseErr := strconv.Atoi(matches[1])
+	if parseErr != nil || limit <= 0 {
+		return false
+	}
+
+	// Clamp whichever key is present
+	if _, ok := body["max_completion_tokens"]; ok {
+		body["max_completion_tokens"] = limit
+	} else {
+		body["max_tokens"] = limit
+	}
+	return true
 }
