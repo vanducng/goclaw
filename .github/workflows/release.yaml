@@ -17,7 +17,7 @@ permissions:
 
 env:
   GHCR_IMAGE: ghcr.io/${{ github.repository }}
-  DOCKERHUB_IMAGE: digitop/goclaw
+  DOCKERHUB_IMAGE: dataplanelabs/goclaw
 
 jobs:
   release:
@@ -280,7 +280,7 @@ jobs:
           cd /tmp/digests
           DIGESTS=$(printf "${{ env.GHCR_IMAGE }}@sha256:%s " *)
           docker buildx imagetools create \
-            $(jq -cr '.tags | map(select(startswith("${{ env.DOCKERHUB_IMAGE }}") or startswith("digitop/")) | "-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(jq -cr '.tags | map(select(startswith("${{ env.DOCKERHUB_IMAGE }}")) | "-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $DIGESTS
 
       - name: Inspect manifests
@@ -403,7 +403,7 @@ jobs:
           cd /tmp/digests
           DIGESTS=$(printf "${{ env.GHCR_IMAGE }}-web@sha256:%s " *)
           docker buildx imagetools create \
-            $(jq -cr '.tags | map(select(startswith("digitop/")) | "-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(jq -cr '.tags | map(select(startswith("${{ env.DOCKERHUB_IMAGE }}-web")) | "-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $DIGESTS
 
       - name: Inspect manifests
@@ -430,7 +430,7 @@ jobs:
                 \"url\": \"https://github.com/${{ github.repository }}/releases/tag/${VERSION}\",
                 \"color\": 5814783,
                 \"fields\": [
-                  {\"name\": \"Docker\", \"value\": \"\`docker pull digitop/goclaw:latest\`\", \"inline\": false},
+                  {\"name\": \"Docker\", \"value\": \"\`docker pull dataplanelabs/goclaw:latest\`\", \"inline\": false},
                   {\"name\": \"Install\", \"value\": \"\`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash\`\", \"inline\": false}
                 ],
                 \"footer\": {\"text\": \"${{ github.repository }}\"},

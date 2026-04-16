@@ -12,7 +12,7 @@ permissions:
 
 env:
   GHCR_IMAGE: ghcr.io/${{ github.repository }}
-  DOCKERHUB_IMAGE: digitop/goclaw
+  DOCKERHUB_IMAGE: dataplanelabs/goclaw
 
 jobs:
   # Build cross-platform binaries and create prerelease
@@ -213,7 +213,7 @@ jobs:
           cd /tmp/digests
           DIGESTS=$(printf "${{ env.GHCR_IMAGE }}@sha256:%s " *)
           docker buildx imagetools create \
-            $(jq -cr '.tags | map(select(startswith("digitop/")) | "-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(jq -cr '.tags | map(select(startswith("${{ env.DOCKERHUB_IMAGE }}")) | "-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $DIGESTS
 
       - name: Inspect manifests
